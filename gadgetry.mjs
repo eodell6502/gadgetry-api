@@ -5,13 +5,11 @@
 TODO:
 
     * Gadgetry
-        * upload test preparatory to:
-            * busboy params
+        * busboy params
         * renewed GET support
         * file downloads
         * logging support
         * custom response codes
-        * generic api logging
         * interceptors
             * inbound request
             * each inbound call
@@ -44,7 +42,6 @@ Gadgetry is developed using PM2 as a process manager and Nginx as a reverse
 proxy, but is capable of running standalone or with other process managers and
 proxies.
 
-
 */
 
 // Standard Node modules -------------------------------------------------------
@@ -75,11 +72,12 @@ export class Gadgetry {
         // Fill in default config values where they are undefined in this.cfg.
 
         const defaults = {
-            maxFieldSize: 128000000000, // max form field size
-            maxFileCount: 32,           // max file uploads per request
-            maxFileSize:  1024, // max uploaded file size
-            port:         8080,         // port to listen on
-            apiLog:       false,        // function to store log entry
+            apiLog:        false,      // function to store log entry
+            maxFieldSize:  Infinity,   // max form field size
+            maxFieldCount: Infinity,   // max number of form fields
+            maxFileCount:  Infinity,   // max file uploads per request
+            maxFileSize:   Infinity,   // max uploaded file size
+            port:          8080,       // port to listen on
         };
 
         for(var k in defaults)
@@ -124,11 +122,11 @@ export class Gadgetry {
 
                 bb.on("file", function(fieldname, file, filename, encoding, mimetype) {
 
-                    if(req.files.length > this.cfg.maxFileCount) {
+                    if(req.files.length >= this.cfg.maxFileCount) {
                         for(var f of req.files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                         console.log("maxFileCount exceeded.");
-                        this.reqError(req, res);
+                        this.reqError(req, res, 413);
                     }
 
                     var tmpobj = tmp.fileSync({detachDescriptor: true});
@@ -150,7 +148,7 @@ export class Gadgetry {
                                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                             req.files = [ ];
                             console.log("maxFileSize exceeded");
-                            this.reqError(req, res);
+                            this.reqError(req, res, 413);
                         } else {
                             fs.writeSync(filerec.fd, data);
                         }
@@ -170,6 +168,8 @@ export class Gadgetry {
                 //--------------------------------------------------------------
 
                 bb.on("field", function(fieldname, val, fieldnameTruncated, valTruncated, encoding, mimetype) {
+                    if(req.params.length >= this.cfg.maxFieldCount)
+                        this.reqError(req, res, 413);
                     req.params[fieldname] = val;
                 });
 
@@ -328,11 +328,12 @@ export class Gadgetry {
 
 
     //==========================================================================
-    // Returns a generic 400 error and closes the connection.
+    // Returns a generic 400 error and closes the connection. The error code can
+    // be overridden by passing an explicit status.
     //==========================================================================
 
-    reqError(req, res) {  // FN: Gadgetry.reqError
-        res.writeHead(400, {
+    reqError(req, res, status = 400) {  // FN: Gadgetry.reqError
+        res.writeHead(status, {
             Connection: "close",
             "Access-Control-Allow-Origin": (req.headers.origin || "none"),
         });
