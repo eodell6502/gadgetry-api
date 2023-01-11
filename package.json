@@ -9,6 +9,7 @@
   "author": "Eric O'Dell",
   "license": "BSD-2-Clause",
   "dependencies": {
-    "busboy": "^1.6.0"
+    "busboy": "^1.6.0",
+    "dyna-guid": "^2.1.2"
   }
 }

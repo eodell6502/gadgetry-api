@@ -12,7 +12,6 @@ TODO:
         * logging support
         * custom response codes
         * generic api logging
-        * request GUID
         * interceptors
             * inbound request
             * each inbound call
@@ -58,6 +57,7 @@ import os           from "os";
 // Third-party modules ---------------------------------------------------------
 
 import Busboy       from "busboy";
+import {guid}       from "dyna-guid";
 import tmp          from "tmp";
 
 
@@ -273,34 +273,38 @@ export class Gadgetry {
 
             for(var i = 0; i < clen; i++) {
                 var cmd = cmds[i].cmd;
-                console.log(cmd + "...");
+                console.log(cmd + "...");   // FIXME
                 var cfunc = this.api[cmd];
+                var cguid = guid();
                 var cmdStart = benchmark ? Date.now() : 0;
+
 
                 if(cfunc) {
                     try {
                         if(this.cfg.apiLog)
-                            await this.cfg.apiLog(cmd, cmds[i].args);
-                        var res = await cfunc(cmds[i].args, files, req, res);
+                            await this.cfg.apiLog("pre", cguid, cmd, cmds[i].args);
+                        var cres = await cfunc(cmds[i].args, files, req, res);
+                        if(this.cfg.apilog)
+                            await this.cfg.apiLog("post", cguid, cres);
                         for(var f of files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                         files = [ ];
 
                     } catch(e) {
                         console.log("API EXCEPTION", cmd, e);
-                        var res = { errcode: "SYSERR", errmsg: "System error.", errloc: cmd, args: cmd[i].args, e: e };
+                        var cres = { errcode: "SYSERR", errmsg: "System error.", errloc: cmd, args: cmd[i].args, e: e };
                     }
 
                     var exectime = Date.now() - cmdStart;
-                    if(benchmark && typeof res == "object")
-                        res.exectime = exectime;
-                    console.log("..." + cmd + " " + exectime + " msec");
+                    if(benchmark && typeof cres == "object")
+                        cres.exectime = exectime;
+                    console.log("..." + cmd + " " + exectime + " msec");  // FIXME
 
                     if(cmds[i].id !== undefined)
-                        res.ID = cmds[i].id;
+                        cres.ID = cmds[i].id;
 
-                    result.results.push(res);
-                    if(res.errcode) {
+                    result.results.push(cres);
+                    if(cres.errcode) {
                         result.failed++;
                         if(!ignoreErrors) {
                             result.aborted = result.cmdcnt - (i + 1);
