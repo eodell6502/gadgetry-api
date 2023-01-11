@@ -5,7 +5,6 @@
 TODO:
 
     * Gadgetry
-        * busboy params
         * renewed GET support
         * file downloads
         * logging support
@@ -171,7 +170,7 @@ export class Gadgetry {
                     if(req.params.length >= this.cfg.maxFieldCount)
                         this.reqError(req, res, 413);
                     req.params[fieldname] = val;
-                });
+                }.bind(this));
 
                 //--------------------------------------------------------------
                 // When this event handler is called, we are done assembling the
@@ -292,16 +291,16 @@ export class Gadgetry {
 
                     } catch(e) {
                         console.log("API EXCEPTION", cmd, e);
-                        var cres = { errcode: "SYSERR", errmsg: "System error.", errloc: cmd, args: cmd[i].args, e: e };
+                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: cmd[i].args, _e: e };  // TODO: hide _e unless debug turned on
                     }
 
                     var exectime = Date.now() - cmdStart;
                     if(benchmark && typeof cres == "object")
-                        cres.exectime = exectime;
+                        cres._exectime = exectime;
                     console.log("..." + cmd + " " + exectime + " msec");  // FIXME
 
                     if(cmds[i].id !== undefined)
-                        cres.ID = cmds[i].id;
+                        cres._id = cmds[i].id;
 
                     result.results.push(cres);
                     if(cres.errcode) {
@@ -318,7 +317,7 @@ export class Gadgetry {
                 }
             }
             if(benchmark)
-                result.exectime = Date.now() - cmdStart;
+                result._exectime = Date.now() - cmdStart;
             return result;
         } else {
             return undefined;
