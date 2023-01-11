@@ -5,9 +5,7 @@
 TODO:
 
     * Gadgetry
-        * renewed GET support
         * file downloads
-        * logging support
         * custom response codes
         * interceptors
             * inbound request
@@ -49,6 +47,7 @@ import fs           from "fs";
 import http         from "http";
 import {inspect}    from "util";
 import os           from "os";
+import qs           from "querystring";
 
 // Third-party modules ---------------------------------------------------------
 
@@ -71,6 +70,7 @@ export class Gadgetry {
         // Fill in default config values where they are undefined in this.cfg.
 
         const defaults = {
+            getBase:       "/foo/",      // if non-false, the base for GET queries
             apiLog:        false,      // function to store log entry
             maxFieldSize:  Infinity,   // max form field size
             maxFieldCount: Infinity,   // max number of form fields
@@ -93,7 +93,7 @@ export class Gadgetry {
 
     async core(cfg) { // FN: Gadgetry.core
 
-        http.createServer(function(req, res) { //-----------------------------------
+        http.createServer(async function(req, res) { //-----------------------------------
 
             if(req.method == "POST") {
 
@@ -230,12 +230,40 @@ export class Gadgetry {
 
             } else if(req.method == "GET") {
 
-                res.writeHead(200, {
-                    Connection: "close",
-                    "Access-Control-Allow-Origin":  (req.headers.origin || "none"),
-                    "Access-Control-Allow-Credentials": "true",
-                });
-                res.end("(((NADA)))");
+                if(this.cfg.getBase) {
+
+                    var payload = this.getToPayload(req.url, this.cfg.getBase);
+
+                    try {
+                        var content = await this.commandLoop(payload, [], req, res);
+                    } catch(e) {
+                        console.log(e);
+                        this.reqError(req, res);
+                    }
+
+                    if(content === undefined) {
+                        this.reqError(req, res);
+                    } else {
+                        try {
+                            res.writeHead(200, {
+                                Connection:     "close",
+                                "Content-Type": "application/json",
+                                "Access-Control-Allow-Origin": (req.headers.origin || "none"),
+                                "Access-Control-Allow-Credentials": "true",
+                            }).end(JSON.stringify(content));
+                        } catch(e) {
+                            console.log(content);
+                        }
+                    }
+
+                } else {
+                    res.writeHead(204, {
+                        Connection: "close",
+                        "Access-Control-Allow-Origin":  (req.headers.origin || "none"),
+                        "Access-Control-Allow-Credentials": "true",
+                    });
+                }
+
             }
 
         }.bind(this)).listen(this.cfg.port, function() {
@@ -277,12 +305,11 @@ export class Gadgetry {
                 var cguid = guid();
                 var cmdStart = benchmark ? Date.now() : 0;
 
-
                 if(cfunc) {
                     try {
                         if(this.cfg.apiLog)
                             await this.cfg.apiLog("pre", cguid, cmd, cmds[i].args);
-                        var cres = await cfunc(cmds[i].args, files, req, res);
+                        var cres = await cfunc(cmds[i].args, files, req, res, cguid);
                         if(this.cfg.apilog)
                             await this.cfg.apiLog("post", cguid, cres);
                         for(var f of files)
@@ -303,7 +330,7 @@ export class Gadgetry {
                         cres._id = cmds[i].id;
 
                     result.results.push(cres);
-                    if(cres.errcode) {
+                    if(cres._errcode) {
                         result.failed++;
                         if(!ignoreErrors) {
                             result.aborted = result.cmdcnt - (i + 1);
@@ -324,6 +351,36 @@ export class Gadgetry {
         }
     }
 
+
+    //==========================================================================
+    // Converts an inbound GET URL into a payload object suitable for passing to
+    // commandLoop. Returns false if the beginning of the URL does not match
+    // this.cfg.getBase.
+    //==========================================================================
+
+    getToPayload(getString, base) {
+        var [path, query] = getString.split("?");
+        path = path.replace(/\/+/g, "/");
+        if(base != path.substr(0, base.length))
+            return false;
+        path = path.substr(base.length);
+
+        var args;
+
+        if(query !== undefined && query.length) {
+            args = qs.parse(query);
+        } else
+            args = { };
+
+        path = path.split("/");
+        var cmd = path.shift();
+        for(var i = 0; i < path.length; i += 2)
+            if(path[i].length)
+                args[path[i]] = path[i+1];
+
+
+        return { cmds: [{ cmd: cmd, args: args }] };
+    }
 
 
     //==========================================================================
