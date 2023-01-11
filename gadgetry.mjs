@@ -312,8 +312,6 @@ export class Gadgetry {
                         var cres = await cfunc(cmds[i].args, files, req, res, cguid);
                         if(this.cfg.apilog)
                             await this.cfg.apiLog("post", cguid, cres);
-                        for(var f of files)
-                            try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                         files = [ ];
 
                     } catch(e) {
@@ -343,6 +341,8 @@ export class Gadgetry {
                     return undefined;
                 }
             }
+            for(var f of files)
+                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
             if(benchmark)
                 result._exectime = Date.now() - cmdStart;
             return result;
