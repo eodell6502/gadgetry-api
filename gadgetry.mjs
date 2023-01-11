@@ -4,22 +4,23 @@
 
 TODO:
 
-    * cfg.maxFieldCount
-    * req/res access
-    * renewed GET support
-    * file downloads
-    * logging support
-    * custom response codes
-    * generic api logging
-    * request GUID
-    * busboy params
-    * single request shortcut in GQuery
-    * GQuery url and params get/set
-    * interceptors
-        * inbound request
-        * each inbound call
-        * each outbound result
-        * outbound response
+    * Gadgetry
+        * upload test preparatory to:
+            * busboy params
+        * renewed GET support
+        * file downloads
+        * logging support
+        * custom response codes
+        * generic api logging
+        * request GUID
+        * interceptors
+            * inbound request
+            * each inbound call
+            * each outbound result
+            * outbound response
+    * GQuery
+        * url and params get/set
+        * single request shortcut
 
 Gadgetry is a minimalist web API-only framework designed to be as quick and easy
 to use as possible. By using its own request protocol, it supports API requests
@@ -76,7 +77,7 @@ export class Gadgetry {
         const defaults = {
             maxFieldSize: 128000000000, // max form field size
             maxFileCount: 32,           // max file uploads per request
-            maxFileSize:  128000000000, // max uploaded file size
+            maxFileSize:  1024, // max uploaded file size
             port:         8080,         // port to listen on
             apiLog:       false,        // function to store log entry
         };
@@ -147,6 +148,7 @@ export class Gadgetry {
                         if(filerec.bytes > this.cfg.maxFileSize) {
                             for(var f of req.files)
                                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
+                            req.files = [ ];
                             console.log("maxFileSize exceeded");
                             this.reqError(req, res);
                         } else {
@@ -195,7 +197,7 @@ export class Gadgetry {
                     }
 
                     try {
-                        var content = await this.commandLoop(payload, req.files);
+                        var content = await this.commandLoop(payload, req.files, req, res);
                     } catch(e) {
                         console.log(e);
                         this.reqError(req, res);
@@ -248,7 +250,7 @@ export class Gadgetry {
     // Main API command-processing loop.
     //--------------------------------------------------------------------------
 
-    async commandLoop(payload, files) {  // FN: commandLoop
+    async commandLoop(payload, files, req, res) {  // FN: commandLoop
 
         if(payload === undefined) {
             console.log("Missing payload.");
@@ -279,7 +281,7 @@ export class Gadgetry {
                     try {
                         if(this.cfg.apiLog)
                             await this.cfg.apiLog(cmd, cmds[i].args);
-                        var res = await cfunc(cmds[i].args, files);
+                        var res = await cfunc(cmds[i].args, files, req, res);
                         for(var f of files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                         files = [ ];
