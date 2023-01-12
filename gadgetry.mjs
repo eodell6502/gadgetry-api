@@ -6,12 +6,8 @@ TODO:
 
     * Gadgetry
         * file downloads
-        * custom response codes
-        * interceptors
-            * inbound request
-            * each inbound call
-            * each outbound result
-            * outbound response
+        * Do something about console output and/or logging of system messages.
+
     * GQuery
         * url and params get/set
         * single request shortcut
@@ -70,10 +66,14 @@ export class Gadgetry {
         // Fill in default config values where they are undefined in this.cfg.
 
         const defaults = {
-            getBase:       "/foo/",      // if non-false, the base for GET queries
             apiLog:        false,      // function to store log entry
-            maxFieldSize:  Infinity,   // max form field size
+            getBase:       false,      // if non-false, the base for GET queries
+            intPreReq:     false,      // if non-false, intercept for incoming requests
+            intPreCmd:     false,      // if non-false, intercept pre-command
+            intPostCmd:    false,      // if non-false, intercept post-command
+            intPreRes:     false,      // if non-false, intercept response                           /* TODO */
             maxFieldCount: Infinity,   // max number of form fields
+            maxFieldSize:  Infinity,   // max form field size
             maxFileCount:  Infinity,   // max file uploads per request
             maxFileSize:   Infinity,   // max uploaded file size
             port:          8080,       // port to listen on
@@ -94,6 +94,9 @@ export class Gadgetry {
     async core(cfg) { // FN: Gadgetry.core
 
         http.createServer(async function(req, res) { //-----------------------------------
+
+            if(this.cfg.intPreReq)
+                this.cfg.intPreReq(req, res);
 
             if(req.method == "POST") {
 
@@ -125,7 +128,7 @@ export class Gadgetry {
                         for(var f of req.files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                         console.log("maxFileCount exceeded.");
-                        this.reqError(req, res, 413);
+                        this.finalizeResponse(req, res, 413);
                     }
 
                     var tmpobj = tmp.fileSync({detachDescriptor: true});
@@ -147,7 +150,7 @@ export class Gadgetry {
                                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                             req.files = [ ];
                             console.log("maxFileSize exceeded");
-                            this.reqError(req, res, 413);
+                            this.finalizeResponse(req, res, 413);
                         } else {
                             fs.writeSync(filerec.fd, data);
                         }
@@ -168,7 +171,7 @@ export class Gadgetry {
 
                 bb.on("field", function(fieldname, val, fieldnameTruncated, valTruncated, encoding, mimetype) {
                     if(req.params.length >= this.cfg.maxFieldCount)
-                        this.reqError(req, res, 413);
+                        this.finalizeResponse(req, res, 413);
                     req.params[fieldname] = val;
                 }.bind(this));
 
@@ -183,7 +186,7 @@ export class Gadgetry {
 
                     if(req.params === undefined || req.params.payload === undefined) {
                         console.log("PARAMS OR PAYLOAD UNDEFINED");
-                        this.reqError(req, res);
+                        this.finalizeResponse(req, res);
                     }
 
                     try {
@@ -192,26 +195,21 @@ export class Gadgetry {
                             console.log("PAYLOAD EMPTY", req.params);
                     } catch(e) {
                         console.log("EMPTY PAYLOAD");
-                        this.reqError(req, res);
+                        this.finalizeResponse(req, res);
                     }
 
                     try {
                         var content = await this.commandLoop(payload, req.files, req, res);
                     } catch(e) {
                         console.log(e);
-                        this.reqError(req, res);
+                        this.finalizeResponse(req, res);
                     }
 
                     if(content === undefined) {
-                        this.reqError(req, res);
+                        this.finalizeResponse(req, res);
                     } else {
                         try {
-                            res.writeHead(200, {
-                                Connection:     "close",
-                                "Content-Type": "application/json",
-                                "Access-Control-Allow-Origin": (req.headers.origin || "none"),
-                                "Access-Control-Allow-Credentials": "true",
-                            }).end(JSON.stringify(content));
+                            this.finalizeResponse(req, res, 200, JSON.stringify(content));
                         } catch(e) {
                             console.log(content);
                         }
@@ -221,7 +219,7 @@ export class Gadgetry {
             } else if(req.method == "OPTIONS") {
 
                 res.writeHead(204, {
-                    Allow: "OPTIONS, GET, HEAD, POST",
+                    "Allow": "OPTIONS, GET, HEAD, POST",
                     "Cache-Control": "max-age=86400",
                     "Access-Control-Allow-Origin":  (req.headers.origin || "none"),
                     "Access-Control-Allow-Credentials": "true",
@@ -232,36 +230,27 @@ export class Gadgetry {
 
                 if(this.cfg.getBase) {
 
-                    var payload = this.getToPayload(req.url, this.cfg.getBase);
+                    var payload = this.getQueryToPayload(req.url, this.cfg.getBase);
 
                     try {
                         var content = await this.commandLoop(payload, [], req, res);
                     } catch(e) {
                         console.log(e);
-                        this.reqError(req, res);
+                        this.finalizeResponse(req, res);
                     }
 
                     if(content === undefined) {
-                        this.reqError(req, res);
+                        this.finalizeResponse(req, res);
                     } else {
                         try {
-                            res.writeHead(200, {
-                                Connection:     "close",
-                                "Content-Type": "application/json",
-                                "Access-Control-Allow-Origin": (req.headers.origin || "none"),
-                                "Access-Control-Allow-Credentials": "true",
-                            }).end(JSON.stringify(content));
+                            this.finalizeResponse(req, res, 200, JSON.stringify(content));
                         } catch(e) {
                             console.log(content);
                         }
                     }
 
                 } else {
-                    res.writeHead(204, {
-                        Connection: "close",
-                        "Access-Control-Allow-Origin":  (req.headers.origin || "none"),
-                        "Access-Control-Allow-Credentials": "true",
-                    });
+                     this.finalizeResponse(req, res, 204);
                 }
 
             }
@@ -299,24 +288,29 @@ export class Gadgetry {
             result.cmdcnt = clen;
 
             for(var i = 0; i < clen; i++) {
-                var cmd = cmds[i].cmd;
-                console.log(cmd + "...");   // FIXME
-                var cfunc = this.api[cmd];
-                var cguid = guid();
+
+                if(this.cfg.intPreCmd)
+                    this.cfg.intPreCmd(req, res, cmd[i]);
+
+                var cmd      = cmds[i].cmd;
+                var args     = cmds[i].args;
+                var id       = cmds[i].id;
+                var cfunc    = this.api[cmd];
+                var cguid    = guid();
                 var cmdStart = benchmark ? Date.now() : 0;
+
+                                                                console.log(cmd + "...");   // FIXME
 
                 if(cfunc) {
                     try {
                         if(this.cfg.apiLog)
-                            await this.cfg.apiLog("pre", cguid, cmd, cmds[i].args);
-                        var cres = await cfunc(cmds[i].args, files, req, res, cguid);
-                        if(this.cfg.apilog)
-                            await this.cfg.apiLog("post", cguid, cres);
+                            await this.cfg.apiLog("preCommand", { cguid: cguid, cmd: cmd, args: args});
+                        var cres = await cfunc(args, files, req, res, cguid);
                         files = [ ];
 
                     } catch(e) {
                         console.log("API EXCEPTION", cmd, e);
-                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: cmd[i].args, _e: e };  // TODO: hide _e unless debug turned on
+                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: args, _e: e };  // TODO: hide _e unless debug turned on
                     }
 
                     var exectime = Date.now() - cmdStart;
@@ -324,8 +318,11 @@ export class Gadgetry {
                         cres._exectime = exectime;
                     console.log("..." + cmd + " " + exectime + " msec");  // FIXME
 
-                    if(cmds[i].id !== undefined)
-                        cres._id = cmds[i].id;
+                    if(id !== undefined)
+                        cres._id = id;
+
+                    if(this.cfg.intPostCmd)
+                        this.cfg.intPostCmd(req, res, cmd[i], cres);
 
                     result.results.push(cres);
                     if(cres._errcode) {
@@ -337,6 +334,8 @@ export class Gadgetry {
                     } else {
                         result.worked++;
                     }
+                    if(this.cfg.apilog)
+                        await this.cfg.apiLog("postCommand", { cguid: cguid, result: cres });
                 } else {
                     return undefined;
                 }
@@ -358,7 +357,7 @@ export class Gadgetry {
     // this.cfg.getBase.
     //==========================================================================
 
-    getToPayload(getString, base) {
+    getQueryToPayload(getString, base) { // FN: Gadgetry.getQueryToPayload
         var [path, query] = getString.split("?");
         path = path.replace(/\/+/g, "/");
         if(base != path.substr(0, base.length))
@@ -384,16 +383,20 @@ export class Gadgetry {
 
 
     //==========================================================================
-    // Returns a generic 400 error and closes the connection. The error code can
-    // be overridden by passing an explicit status.
+    // Sends the response.
     //==========================================================================
 
-    reqError(req, res, status = 400) {  // FN: Gadgetry.reqError
+    finalizeResponse(req, res, status = 400, content = "", contentType = "application/json") { // FN: Gadgetry.finalizeResponse
+        if(res.gadgetryStatus !== undefined)
+            status = res.gadgetryStatus;
+        if(this.cfg.intPreRes)
+            this.cfg.intPreRes(req, res);
         res.writeHead(status, {
             Connection: "close",
             "Access-Control-Allow-Origin": (req.headers.origin || "none"),
-        });
-        res.end();
+            "Access-Control-Allow-Credentials": "true",
+            "Content-Type:": contentType
+        }).end(content);
     }
 
 }
