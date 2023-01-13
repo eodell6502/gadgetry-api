@@ -5,7 +5,7 @@
 TODO:
 
     * Gadgetry
-        * Do something about console output and/or logging of system messages.
+        * Make sure Busboy gets Gadgetry limits
 
     * GQuery
         * url and params get/set
@@ -66,17 +66,18 @@ export class Gadgetry {
         // Fill in default config values where they are undefined in this.cfg.
 
         const defaults = {
-            apiLog:        false,      // function to store log entry
-            getBase:       false,      // if non-false, the base for GET queries
-            intPreReq:     false,      // if non-false, intercept for incoming requests
-            intPreCmd:     false,      // if non-false, intercept pre-command
-            intPostCmd:    false,      // if non-false, intercept post-command
-            intPreRes:     false,      // if non-false, intercept response                           /* TODO */
-            maxFieldCount: Infinity,   // max number of form fields
-            maxFieldSize:  Infinity,   // max form field size
-            maxFileCount:  Infinity,   // max file uploads per request
-            maxFileSize:   Infinity,   // max uploaded file size
-            port:          8080,       // port to listen on
+            debug:         false,       // if true, returns error data to client
+            getBase:       false,       // if non-false, the base for GET queries
+            intPostCmd:    false,       // if non-false, intercept post-command
+            intPreCmd:     false,       // if non-false, intercept pre-command
+            intPreReq:     false,       // if non-false, intercept for incoming requests
+            intPreRes:     false,       // if non-false, intercept response
+            logger:        this.logger, // function to store log entry
+            maxFieldCount: Infinity,    // max number of form fields
+            maxFieldSize:  Infinity,    // max form field size
+            maxFileCount:  Infinity,    // max file uploads per request
+            maxFileSize:   Infinity,    // max uploaded file size
+            port:          8080,        // port to listen on
         };
 
         this.requestCount = 0;
@@ -112,7 +113,7 @@ export class Gadgetry {
                         }
                     });
                 } catch(e) {
-                    console.log("Busboy initialization error", e, req.headers);
+                    console.log("Fatal Busboy initialization error", e, req.headers);
                     process.exit(1);
                     return;
                 }
@@ -131,7 +132,7 @@ export class Gadgetry {
                     if(req.files.length >= this.cfg.maxFileCount) {
                         for(var f of req.files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
-                        console.log("maxFileCount exceeded.");
+                        this.cfg.logger("request", { errcode: "REQERROR", errmsg: "maxFileCount exceeded."});
                         this.finalizeResponse(req, res, 413);
                     }
 
@@ -153,7 +154,7 @@ export class Gadgetry {
                             for(var f of req.files)
                                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                             req.files = [ ];
-                            console.log("maxFileSize exceeded");
+                            this.cfg.logger("request", { errcode: "REQERROR", errmsg: "maxFileSize exceeded."});
                             this.finalizeResponse(req, res, 413);
                         } else {
                             fs.writeSync(filerec.fd, data);
@@ -174,8 +175,10 @@ export class Gadgetry {
                 //--------------------------------------------------------------
 
                 bb.on("field", function(fieldname, val, fieldnameTruncated, valTruncated, encoding, mimetype) {
-                    if(req.params.length >= this.cfg.maxFieldCount)
+                    if(req.params.length >= this.cfg.maxFieldCount) {
+                        this.cfg.logger("request", { errcode: "REQERROR", errmsg: "maxFieldCount exceeded."});
                         this.finalizeResponse(req, res, 413);
+                    }
                     req.params[fieldname] = val;
                 }.bind(this));
 
@@ -189,23 +192,23 @@ export class Gadgetry {
                     var payload;
 
                     if(req.params === undefined || req.params.payload === undefined) {
-                        console.log("PARAMS OR PAYLOAD UNDEFINED");
-                        this.finalizeResponse(req, res);
+                        this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Params or payload undefined."});
+                        this.finalizeResponse(req, res, 400);
                     }
 
                     try {
                         payload = JSON.parse(req.params.payload);
                         if(!payload)
-                            console.log("PAYLOAD EMPTY", req.params);
+                            this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Empty payload."});
                     } catch(e) {
-                        console.log("EMPTY PAYLOAD");
+                        this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Unable to parse payload."});
                         this.finalizeResponse(req, res);
                     }
 
                     try {
                         var content = await this.commandLoop(payload, req.files, req, res);
                     } catch(e) {
-                        console.log(e);
+                        this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
                         this.finalizeResponse(req, res, 500);
                     }
 
@@ -215,7 +218,7 @@ export class Gadgetry {
                         try {
                             this.finalizeResponse(req, res, 200, JSON.stringify(content));
                         } catch(e) {
-                            console.log(content);
+                            this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
                         }
                     }
                 }.bind(this));
@@ -239,7 +242,7 @@ export class Gadgetry {
                     try {
                         var content = await this.commandLoop(payload, [], req, res);
                     } catch(e) {
-                        console.log(e);
+                        this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
                         this.finalizeResponse(req, res);
                     }
 
@@ -249,7 +252,7 @@ export class Gadgetry {
                         try {
                             this.finalizeResponse(req, res, 200, JSON.stringify(content));
                         } catch(e) {
-                            console.log(content);
+                            this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
                         }
                     }
 
@@ -273,7 +276,7 @@ export class Gadgetry {
     async commandLoop(payload, files, req, res) {  // FN: commandLoop
 
         if(payload === undefined) {
-            console.log("Missing payload.");
+            this.cfg.logger("api", { errcode: "CMDERROR", errmsg: "Payload is undefined." });
             return undefined;
         }
 
@@ -301,26 +304,23 @@ export class Gadgetry {
                 var id       = cmds[i].id;
                 var cfunc    = this.api[cmd];
                 var cguid    = guid();
-                var cmdStart = benchmark ? Date.now() : 0;
-
-                                                                console.log(cmd + "...");   // FIXME
+                var cmdStart = Date.now();
 
                 if(cfunc) {
                     try {
-                        if(this.cfg.apiLog)
-                            await this.cfg.apiLog("preCommand", { cguid: cguid, cmd: cmd, args: args});
+                        if(this.cfg.logger)
+                            this.cfg.logger("preCommand", { cguid: cguid, cmd: cmd, args: args});
                         var cres = await cfunc(args, files, req, res, cguid);
                         files = [ ];
-
                     } catch(e) {
-                        console.log("API EXCEPTION", cmd, e);
-                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: args, _e: e };  // TODO: hide _e unless debug turned on
+                        this.cfg.logger("api", { errcode: "CMDERROR", errmsg: "Exception thrown by command " + cmd, error: e });
+                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: args, _e: this.cfg.debug ? e : null };
                     }
 
                     var exectime = Date.now() - cmdStart;
                     if(benchmark && typeof cres == "object")
                         cres._exectime = exectime;
-                    console.log("..." + cmd + " " + exectime + " msec");  // FIXME
+                    this.cfg.logger("postCommand", { cmd: cmd, cguid: cguid, exectime: exectime });
 
                     if(id !== undefined)
                         cres._id = id;
@@ -338,11 +338,14 @@ export class Gadgetry {
                     } else {
                         result.worked++;
                     }
-                    if(this.cfg.apilog)
-                        await this.cfg.apiLog("postCommand", { cguid: cguid, result: cres });
+                    if(this.cfg.logger)
+                        this.cfg.logger("commandResult", { cguid: cguid, result: cres });
                 } else {
+                    this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Invalid command " + cmd, error: e });
                     return undefined;
                 }
+
+
             }
             for(var f of files)
                 try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
@@ -404,7 +407,13 @@ export class Gadgetry {
 
     }
 
+    //==========================================================================
+    // Default logger.
+    //==========================================================================
 
+    async logger(type, data) {
+        console.log(type, data);
+    }
 
 }
 
