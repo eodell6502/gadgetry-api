@@ -5,7 +5,6 @@
 TODO:
 
     * Gadgetry
-        * file downloads
         * Do something about console output and/or logging of system messages.
 
     * GQuery
@@ -44,6 +43,7 @@ import http         from "http";
 import {inspect}    from "util";
 import os           from "os";
 import qs           from "querystring";
+import stream       from "stream";
 
 // Third-party modules ---------------------------------------------------------
 
@@ -79,6 +79,8 @@ export class Gadgetry {
             port:          8080,       // port to listen on
         };
 
+        this.requestCount = 0;
+
         for(var k in defaults)
             if(this.cfg[k] === undefined)
                 this.cfg[k] = defaults[k];
@@ -94,6 +96,8 @@ export class Gadgetry {
     async core(cfg) { // FN: Gadgetry.core
 
         http.createServer(async function(req, res) { //-----------------------------------
+
+            this.requestCount++;
 
             if(this.cfg.intPreReq)
                 this.cfg.intPreReq(req, res);
@@ -202,7 +206,7 @@ export class Gadgetry {
                         var content = await this.commandLoop(payload, req.files, req, res);
                     } catch(e) {
                         console.log(e);
-                        this.finalizeResponse(req, res);
+                        this.finalizeResponse(req, res, 500);
                     }
 
                     if(content === undefined) {
@@ -386,7 +390,7 @@ export class Gadgetry {
     // Sends the response.
     //==========================================================================
 
-    finalizeResponse(req, res, status = 400, content = "", contentType = "application/json") { // FN: Gadgetry.finalizeResponse
+    finalizeResponse(req, res, status = 400, content = "") { // FN: Gadgetry.finalizeResponse
         if(res.gadgetryStatus !== undefined)
             status = res.gadgetryStatus;
         if(this.cfg.intPreRes)
@@ -395,9 +399,12 @@ export class Gadgetry {
             Connection: "close",
             "Access-Control-Allow-Origin": (req.headers.origin || "none"),
             "Access-Control-Allow-Credentials": "true",
-            "Content-Type:": contentType
+            "Content-Type": "application/json"
         }).end(content);
+
     }
+
+
 
 }
 
