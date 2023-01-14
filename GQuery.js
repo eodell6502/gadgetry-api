@@ -4,16 +4,21 @@ class GQuery {
     //--------------------------------------------------------------------------
 
     constructor(url, params = { }) {
-        this.url      = url;
-        this.params   = params;
-        this.cmds     = null;
-        this.results  = null;
-        this.worked   = null;
-        this.failed   = null;
-        this.aborted  = null;
-        this.cmdcnt   = null;
-        this.exectime = null;
-        this.files    = null;
+        this.url          = url;
+        this.benchmark    = false;
+        this.ignoreErrors = false;
+        this.cmds         = null;
+        this.results      = null;
+        this.worked       = null;
+        this.failed       = null;
+        this.aborted      = null;
+        this.cmdcnt       = null;
+        this.exectime     = null;
+        this.files        = null;
+
+        for(var k in params)
+            if(this[k] !== undefined)
+                this[k] = params[k];
     }
 
     //--------------------------------------------------------------------------
@@ -25,14 +30,22 @@ class GQuery {
         if(this.cmds === null)
             this.cmds = [ ];
         this.cmds.push(cmd);
+        return this;
     }
 
     //--------------------------------------------------------------------------
 
-    setParams(params) {
-        this.params = params;
+    benchmark(val) {
+        this.benchmark = val ? true : false;
+        return this;
     }
 
+    //--------------------------------------------------------------------------
+
+    ignoreErrors(val) {
+        this.ignoreErrors = val ? true : false;
+        return this;
+    }
 
     //--------------------------------------------------------------------------
 
@@ -40,6 +53,7 @@ class GQuery {
         if(this.files === null)
             this.files = [ ];
         this.files.push([name, fileObject]);
+        return this;
     }
 
     //--------------------------------------------------------------------------
@@ -53,6 +67,7 @@ class GQuery {
         this.cmdcnt   = null;
         this.exectime = null;
         this.files    = null;
+        return this;
     }
 
     //--------------------------------------------------------------------------
@@ -81,16 +96,25 @@ class GQuery {
         this.exectime = body.exectime !== undefined ? body.exectime : null;
 
         return this.results;
-}
+    }
 
+    //--------------------------------------------------------------------------
+
+    async req(cmd, args, id = null) {
+        this.reset();
+        this.addCommand(cmd, args, id);
+        await this.exec();
+        return this.results[0];
+    }
 
     //--------------------------------------------------------------------------
 
     getFilesFromForm(formobj) {
         var fd = new FormData(formobj);
         for(var item of fd.entries())
-            if(typeof item[1] == "object")
+            if(typeof item[1] == "object")        // FIXME: try instanceof instead
                 this.addFile(item[0], item[1]);
+        return this;
     }
 
 

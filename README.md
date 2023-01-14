@@ -2,7 +2,521 @@
 
 ![Gadgetry title](img/gadgetry.png)
 
-This is a placeholder for the next little bit. Before long, it will be a
-minimalist web API framelet.
+Gadgetry is a minimalist web API framework that follows the Unix philosophy of
+doing one thing and doing it well. Gadgetry ignores all of the non-essential
+details of HTTP and just uses POST to receive JSON requests and send JSON
+responses. It doesn't pay attention to URLs or play games with the semantics of
+HTTP verbs. The client just fires off requests to named server-side functions,
+and those functions return their results. It can run standalone or (preferably)
+under PM2 with an Nginx proxy. It even comes with a small client-side wrapper to
+hide the few details involved in making a request.
+
+* [Installation](#installation)
+* [Quick Start](#quickstart)
+* [Features](#features)
+* [Server-Side](#serverside)
+    * [Initializing the `Gadgetry` Object](#gadgetinit)
+    * [API Functions](#apifuncs)
+    * [Logging](#logging)
+    * [Interceptors](#interceptors)
+* [Client-Side](#clientside)
+    * [Single Requests](#singlereqs)
+    * [Batched Requests](#batchreqs)
+    * [Uploading Files](#uploads)
+* [Class Reference](#classreference)
+    * [Gadgetry (server side)](#gadgetryclass)
+    * [GQuery (client side)](#gqueryclass)
+* [Low-Level Request/Response Details](#lowlevel)
+
+## Installation <a name="installation"></a>
+
+Installation of Gadgetry is, of course, as simple as:
+
+```bash
+npm install gadgetry-api
+```
+
+This is often good enough for testing, but for real world deployment, you
+probably want to use a process manager like [PM2](https://pm2.io) to run it, and
+use a webserver like [Nginx](https://nginx.org) or [Apache](https://apache.org)
+as a reverse proxy.
+
+
+## Quick Start <a name="quickstart"></a>
+
+Writing a Gadgetry API is _very_ simple. Let's look at a Hello World
+implementation:
+
+```javascript
+#!/usr/bin/env node
+
+import Gadgetry from "gadgetry-api";
+
+var api = {
+    helloWorld: async function(args) {
+        return { message: "Hello, " + (args.to ? args.to : "world") + "!" };
+    },
+}
+
+var g = new Gadgetry(api);
+
+```
+
+And that's it. You now have a Gadgetry server running at the default port, 8080,
+ready to receive requests. On the client side, a request can be as simple as
+this:
+
+```javascript
+<script src="GQuery.js"></script)
+<script>
+    gq = new GQuery("http://localhost:8080");
+    gq.req("helloWorld", { to: "Gadgetry" })
+        .then((res) => console.log(res));
+</script>
+
+// which sends the following to the console:
+
+{message: 'Hello, Gadgetry!'}
+
+```
+
+It's that simple. You send an arbitrary object to a named function on the server
+side, and you get its response back as another object. There are a few extra
+details and conventions you'll need to know to write real world APIs with
+Gadgetry, but you can fit them on an index card.
+
+
+## Features <a name="features"></a>
+
+* Gadgetry lets you ignore nearly all the details of HTTP. As far as your code is concerned, you're just making asynchronous function calls.
+* Send individual requests or batch several requests together.
+* Extensive, unopinionated logging that you can plug into your preferred logging mechanism.
+* Interceptor hooks let you execute custom code before and after HTTP requests and responses, as well as individual API functions.
+* Painless handling of file uploads.
+* Optional benchmarking of API function performance.
+* Only a few dependencies: `busboy`, `dyna-guid`, and `tmp`.
+
+As a minimalist framework, there's a lot that Gadgetry doesn't do. Most of this
+is pretty obvious, but the big deal-breaker for many users will be that Gadgetry
+responses are currently limited to pure JSON, so serving files with it is not
+possible at this time.
+
+
+## Server-Side <a name="serverside"></a>
+
+### Initializing the `Gadgetry` Object <a name="gadgetinit"></a>
+
+```javascript
+var g = new Gadgetry(api, config);
+```
+
+To spin up a Gadgetry server, all you absolutely have to pass to the constructor
+is an API object whose keys are the names of the functions as they will be called
+by the client, and whose values are the functions themselves. How you organize your
+code to get to this point is your business. After the `api` argument is an optional
+`config` object that you will almost certainly want to supply in real world
+applications. Its members are:
+
+| Name            | Default       | Description |
+|-----------------|---------------|-------------|
+| `port`          | `8080`        | Specifies the port that Gadgetry will listen on. |
+| `debug`         | `false`       | If `true`, full error information will be returned to the client when an API function throws an exception. |
+| `logger`        | `this.logger` | If you'd like to collect Gadgetry's log messages, supply your function here. It should take two arguments, `messageType` and `message`. The default logger just writes to `console.log` |
+| `maxFieldCount` | `Infinity`    | Maximum number of form fields in a request. This should always be at least `1` to accommodate the request `payload` field. |
+| `maxFieldSize`  | `Infinity`    | Maximum form field size. Since the client submits requests as a form with the request JSON stuffed into a field named `payload`, this should be at least as large as the largest request. |
+| `maxFileCount`  | `Infinity`    | Maximum number of uploaded files per request. |
+| `maxFileSize`   | `Infinity`    | Maximum uploaded file size. |
+| `intPostCmd`    | `false`       | Intercept post-command. See [Interceptors](#interceptors). |
+| `intPreCmd`     | `false`       | Intercept pre-command. See [Interceptors](#interceptors). |
+| `intPreReq`     | `false`       | Intercept incoming request. See [Interceptors](#interceptors). |
+| `intPreRes`     | `false`       | Intercept outgoing response. See [Interceptors](#interceptors). |
+
+
+### API Functions <a name="apifuncs"></a>
+
+The basic API function looks like this:
+
+```javascript
+async function basicSample(args) {
+    // Do something with the args object
+    // Return a results object
+}
+```
+
+Either the `args` object or the result object can contain anything that can be
+serialized into JSON. (Gadgetry takes care of the serialization and
+unserialization behind the scenes.)
+
+To tell Gadgetry and the client that an error has occurred, the result object
+should contain a `_errcode` element. It doesn't matter what its value is, but
+its presence will tell Gadgetry to abort an ongoing batch of requests if it
+has been so configured. (This is the default behavior.)
+
+The full set of arguments available to an API function actually looks like
+this:
+
+```javascript
+advancedSample(args, files, cguid, req, res)
+```
+
+<a name="serveruploads"></a>After the `args` object, `files` is an array of files, if any, that have been
+uploaded with the request. These files will be automatically deleted at the end
+of the request, so you will have to move or copy them if you want them to be
+retained on the server. Elements of that array look like this:
+
+```javascript
+{
+    field:    "userfile",
+    filename: "df940321.jpg",
+    encoding: "7bit",
+    mimeType: "image/jpeg",
+    tmpfile:  "/tmp/tmp-122776-mc3n2QnmnPRR",
+    bytes:    111413
+}
+```
+
+The `cguid` argument is a unique identifier for the current request. This can
+be useful for logging purposes.
+
+Bringing up the rear, the `req` and `res` arguments are the HTTP request and
+response objects from Node. In this kind of minimalist framework, you shouldn't
+have to mess with them much, but if you do, they're available to every API
+function.
+
+
+### Logging <a name="logging"></a>
+
+By default, the `Gadgetry` object logs everything to `this.logger`, which is a
+thin wrapper around `console.log`. By setting the `logger` property in
+`Gadgetry.cfg` to point to an alternative function, logging messages can be
+directed to your logging service of choice.
+
+The `logger` function must take two arguments, `type` and `data`, where `type`
+is a string identifying the type of log message, and `data` is an object
+containing arbitrary data. The possible `type`s are:
+
+| Type            | Description                             |
+|-----------------|-----------------------------------------|
+| `api`           | Errors arising from API calls.          |
+| `commandResult` | Output of API calls.                    |
+| `postCommand`   | Completion of API calls.                |
+| `preCommand`    | Contents of API calls.                  |
+| `request`       | Errors arising from the request itself. |
+
+
+### Interceptors <a name="interceptors"></a>
+
+As clean and minimalist as Gadgetry is, the real world is full of messes, and
+that sometimes requires getting into low-level details. For those (hopefully
+rare) occasions, Gadgetry provides four interceptor functions to manipulated
+HTTP requests and responses, as well as the arguments and results of your API
+functions. You can set these in the constructor or directly in `Gadgetry.cfg`.
+
+`intPreReq(req, res)` is called before any processing with the HTTP request
+and response objects.
+
+`intPreRes(req, res)` is called right before the response is set.
+
+`intPreCmd(req, res, cmd)` is called before each command in the request is
+executed.
+
+`intPostCmd(req, res, cmd, result)` is called right after each command is
+executed.
+
+## Client-Side <a name="clientside"></a>
+
+### Single Requests <a name="singlereqs"></a>
+
+Thanks to the `GQuery` class, using Gadgetry from the client side is even
+easier than working on the server side. The constructor takes two arguments:
+
+```javascript
+var gq = new GQuery("https://somedomain.com/api", {
+    benchmark: false,
+    ignoreErrors: false
+});
+```
+
+The first argument is the URL of the API. The second, optional argument, shown
+here with its default values, allows you to turn benchmarking and error handling
+on and off. We'll come back to those options in a minute, but first, here's what
+the simplest form of making an API call looks like.
+
+```javascript
+var result = await gq.req("getCircleArea", { radius: 2.5, unit: "cm" });
+```
+
+In this case, the API function being called is `getCircleArea` with two
+arguments, `radius` and `unit`. The result that comes back would look something
+like this:
+
+```javascript
+{ area: 19.63495, unit: "cm^2" }
+```
+
+You can re-use the `GQuery` object to make multiple calls to the `req` method,
+of course. It really doesn't get any easier than that.
+
+### Multiple Requests <a name="batchreqs"></a>
+
+Firing off calls to API functions one at a time works fine for some things, but
+it's terribly slow and inefficient if you have a bunch of API functions to hit
+at once. Fortunately, `GQuery` makes it easy to do this:
+
+```javascript
+gq.addCommand("getCircleArea", { radius: 2.5, unit: "cm" }, "circle");
+gq.addCommand("getSquareArea", { side: 3.24, unit: "ft" }, "square");
+gq.addCommand("getTriangleArea", { base: 5, height: 15, unit: "in" }, "triangle");
+
+var results = await gq.exec();
+```
+
+Instead of using the `req` method, you use `addCommand` to queue individual API
+calls and then call `exec` to fire the whole batch off to the server in a single
+batch.
+
+The `results` come back as an array of objects in the same order as the
+individual API functions were added to the batch. Even so, it can sometimes be
+hard to keep track of which result goes with which function, so we've used the
+optional third `id` argument of `addCommand` that will come back in each result
+as `_id`:
+
+```javascript
+console.log(results);
+
+[
+    { area: 19.63495, unit: "cm^2", _id: "circle" },
+    { area: 10.4976, unit: "ft^2", _id: "square" },
+    { area: 37.5, unit: "in^2", _id: "triangle" }
+]
+```
+
+When the results come back, they are also available as `gq.results`, along with
+a bunch of statistical information about the batch:
+
+```javascript
+gq.cmds     =  // The original array of outbound function calls
+gq.worked   =  // The number of calls that succeeded
+gq.failed   =  // The number of calls that failed by issuing errors
+gq.aborted  =  // The number of calls that were not executed due to earlier errors
+gq.cmdcnt   =  // The total number of calls in the batch
+gq.exectime =  // If benchmarking was turned on, the total time required in ms
+```
+
+We have to make the distinction between `failed` and `aborted` function calls
+when the `ignoreErrors` option is false because the server will terminate
+execution of the batch and return the successful results of earlier functions
+whenever a call fails. (From the server side, this means returning a result
+containing an `_errcode` element.) This avoids situations where a later call
+depends on the results of an earlier failed call. If all of the function calls
+in the batch are independent of each other, you can defeat this behavior by
+setting the `ignoreErrors` option to `true`.
+
+Finally, there is also the `benchmark` option to consider. When this is `true`
+(the default is `false`), each result will have an additional element named
+`_exectime` which contains the execution time of the function in milliseconds.
+This is an excellent tool for testing because it gives you the actual execution
+time on the server, as distinct from the total round trip timing you can see in
+the browser. The same information can be logged server-side as well.
+
+### Uploading Files <a name="uploads"></a>
+
+We already [discussed](#serveruploads) how file uploads look on the server side,
+so how about the client side? Easy as pie:
+
+```javascript
+gq.addFile("fieldname", fileObj);
+```
+
+All you have to do is call the `addFile` method with a form field name and a
+browser `File` object. Why bother with a form field name? Do remember that
+uploaded files are associated with (and accessible to) all of the function calls
+in the batch rather than being part of any individual function's arguments. If
+you are uploading multiple files and need a way to distinguish between them on
+the server side, the field name is a good way to handle that.
+
+## Class Reference <a name="classreference"></a>
+
+### Gadgetry (server side) <a name="#gadgetryclass"></a>
+
+#### constructor(api, cfg = { })
+
+The constructor is the `Gadgetry` class' only public method. It takes two
+arguments. The first, `api`, is required and is an object whose keys are the
+names of API functions and whose values are the actual JavaScript functions that
+carry them out. The second argument, `cfg`, is optional, but will be used by
+most real world applications. The possible values of `cfg` and their defaults
+are as follows:
+
+| Name          | Default       | Description                                                                                                      |
+|---------------|---------------|------------------------------------------------------------------------------------------------------------------|
+| debug         | `false`       | If `true`, returns error data to the client when an exception occurs during the execution of an API function.    |
+| intPostCmd    | `false`       | A function to intercept the results of API function calls. See [Interceptors](#interceptors) for details.        |
+| intPreCmd     | `false`       | A function to fire before API function calls. See [Interceptors](#interceptors) for details.                     |
+| intPreReq     | `false`       | A function called with the initial request. See [Interceptors](#interceptors) for details.                       |
+| intPreRes     | `false`       | A function called with the response before sending to the client. See [Interceptors](#interceptors) for details. |
+| logger        | `this.logger` | A function to receive logging data. See [Logging](#logging) for details.                                         |
+| maxFieldCount | `Infinity`    | Maximum number of form fields.                                                                                   |
+| maxFieldSize  | `Infinity`    | Maximum size of individual form fields.                                                                          |
+| maxFileCount  | `Infinity`    | Maximum number of files allowed with each request or batch of requests.                                          |
+| maxFileSize   | `Infinity`    | Maximum file size.                                                                                               |
+| port          | 8080          | Port to listen on.                                                                                               |
+
+
+### GQuery (client side) <a name="#queryclass"></a>
+
+#### `constructor(url, params = { })`
+
+**Arguments:**
+
+| name   | description                                                                                                  |
+|--------|--------------------------------------------------------------------------------------------------------------|
+| url    | The complete URL to the server side API resource.                                                            |
+| params | An object containing boolean values for one or both of `benchmark` and `ignoreErrors`, both default `false`. |
+
+**Returns:** a new `GQuery` object.
+
+---
+
+#### `addCommand(cmd, args = { }, id = null)`
+
+Adds a new API request to the pending batch.
+
+**Arguments:**
+
+| name | description                                           |
+|------|-------------------------------------------------------|
+| cmd  | The name of the requested API function                |
+| args | An object containing its arguments.                   |
+| id   | An optional ID to be returned in the results as `_id` |
+
+**Returns:** `this`
+
+---
+
+#### `addFile(name, fileObject)`
+
+**Arguments:**
+
+| name       | description |
+|------------|-------------|
+| name       |
+| fileObject |
+
+**Returns:** `this`
+
+---
+
+#### `benchmark(val)`
+
+This method sets the value of the internal `benchmark` flag. While this is `true`,
+responses from the server will including `_exectime` elements containing the number
+of milliseconds required to execute the requested API function.
+
+**Arguments:**
+
+| name | description                                                                      |
+|------|----------------------------------------------------------------------------------|
+| val  | A boolean indicating whether to use benchmarking or not. The default is `false`. |
+
+**Returns:** `this`
+
+---
+
+#### `exec()`
+
+The `exec` method sends the whole pending batch of API calls created with `addCommand`
+to the server for execution and returns the results array when it arrives, which it
+also assigns to its `results` member. Upon completion of the request, several additional
+members will be set with statistical values from the transaction:
+
+| name    | description                                                                        |
+|---------|------------------------------------------------------------------------------------|
+| cmdcnt  | Total number of commands in the batch                                              |
+| worked  | Number of commands that executed successfully                                      |
+| failed  | Number of commands that failed, i.e., returned an _errcode element                 |
+| aborted | Number of commands that were not executed at all because an earlier command failed |
+
+**Arguments:** none
+
+**Returns:** A results array.
+
+---
+
+#### `getFilesFromForm(formobj)`
+
+This convenience method takes a `Form` object with file inputs and calls
+`addFile` on each one, sparing you the inconvenience of instantiating a
+bunch of `File` objects.
+
+**Arguments:**
+
+| name    | description             |
+|---------|-------------------------|
+| formobj | A browser `Form` object |
+
+**Returns:** `this`
+
+---
+
+#### `ignoreErrors(val)`
+
+Sets the internal `ignoreErrors` flag. If `false`, a batch of API functions will
+be halted when the first one fails, i.e., returns an object containing `_errcode`.
+If `true`, the server will attempt to execute all of the functions in the request
+regardless of success or failure.
+
+**Arguments:**
+
+| name | description                                                                   |
+|------|-------------------------------------------------------------------------------|
+| val  | A boolean indicating whether to ignore errors or not. The default is `false`. |
+
+**Returns:** `this`
+
+---
+
+#### `req(cmd, args, id = null)`
+
+Sends a single API call to the server for immediate execution.
+
+**Arguments:**
+
+| name | description                                           |
+|------|-------------------------------------------------------|
+| cmd  | The name of the requested API function                |
+| args | An object containing its arguments.                   |
+| id   | An optional ID to be returned in the results as `_id` |
+
+**Returns:** a single result object
+
+---
+
+#### `reset()`
+
+After a batch request has been sent to the server and the results received,
+you must call the `reset` method to clear out the internal state so the `GQuery`
+object can be reused for further traffic. This is not necessary when using
+the single-function `req` method.
+
+**Arguments:** none
+
+**Returns:** `this`
+
+## Low-Level Request/Response Details <a name="lowlevel"></a>
+
+(description of request/response formats goes here)
+
+
+
+<!--
+
+TODO:
+
+    * More testing...
+    * Gadgetry
+        * Make sure Busboy gets Gadgetry limits and that Gadgetry recognizes when they have been exceeded.
+
+-->
 
 

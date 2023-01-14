@@ -1,49 +1,12 @@
 #!/usr/bin/env node
 
-/*
-
-TODO:
-
-    * Gadgetry
-        * Make sure Busboy gets Gadgetry limits
-
-    * GQuery
-        * url and params get/set
-        * single request shortcut
-
-Gadgetry is a minimalist web API-only framework designed to be as quick and easy
-to use as possible. By using its own request protocol, it supports API requests
-over POST, including batched requests and file uploads. All you have to do is
-set a few config values and provide it with a set of functions with names
-matching the inbound requests. From the browser side, making API calls is as
-simple as calling any other asynchronous function. From the server side, you're
-also just writing simple functions.
-
-This simplicity is accomplished through a simple protocol that disposes with the
-needlessly complicated conventions used by other frameworks. Gadgetry has its
-own error codes, so HTTP response codes are largely ignored. All requests are
-JSON-over-POST. Gadgetry also largely ignores URLs. As far as both client and
-server are concerned, functions are being called and results returned, and HTTP
-just happens to be how that happens.
-
-If that sounds a lot like a traditional remote procedure call, you're not wrong.
-Unlike other RPC protocols, e.g., SOAP, however, Gadgetry's model is dead simple
-(and free of XML).
-
-Gadgetry is developed using PM2 as a process manager and Nginx as a reverse
-proxy, but is capable of running standalone or with other process managers and
-proxies.
-
-*/
-
 // Standard Node modules -------------------------------------------------------
 
 import fs           from "fs";
 import http         from "http";
 import {inspect}    from "util";
 import os           from "os";
-import qs           from "querystring";
-import stream       from "stream";
+//import qs           from "querystring";
 
 // Third-party modules ---------------------------------------------------------
 
@@ -67,7 +30,7 @@ export class Gadgetry {
 
         const defaults = {
             debug:         false,       // if true, returns error data to client
-            getBase:       false,       // if non-false, the base for GET queries
+//            getBase:       false,       // if non-false, the base for GET queries
             intPostCmd:    false,       // if non-false, intercept post-command
             intPreCmd:     false,       // if non-false, intercept pre-command
             intPreReq:     false,       // if non-false, intercept for incoming requests
@@ -234,7 +197,7 @@ export class Gadgetry {
                 }).end();
 
             } else if(req.method == "GET") {
-
+/*
                 if(this.cfg.getBase) {
 
                     var payload = this.getQueryToPayload(req.url, this.cfg.getBase);
@@ -259,7 +222,8 @@ export class Gadgetry {
                 } else {
                      this.finalizeResponse(req, res, 204);
                 }
-
+*/
+                this.finalizeResponse(req, res, 204);
             }
 
         }.bind(this)).listen(this.cfg.port, function() {
@@ -310,7 +274,7 @@ export class Gadgetry {
                     try {
                         if(this.cfg.logger)
                             this.cfg.logger("preCommand", { cguid: cguid, cmd: cmd, args: args});
-                        var cres = await cfunc(args, files, req, res, cguid);
+                        var cres = await cfunc(args, files, cguid, req, res);
                         files = [ ];
                     } catch(e) {
                         this.cfg.logger("api", { errcode: "CMDERROR", errmsg: "Exception thrown by command " + cmd, error: e });
@@ -357,7 +321,7 @@ export class Gadgetry {
         }
     }
 
-
+/*
     //==========================================================================
     // Converts an inbound GET URL into a payload object suitable for passing to
     // commandLoop. Returns false if the beginning of the URL does not match
@@ -387,7 +351,7 @@ export class Gadgetry {
 
         return { cmds: [{ cmd: cmd, args: args }] };
     }
-
+*/
 
     //==========================================================================
     // Sends the response.
