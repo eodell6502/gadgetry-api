@@ -22,15 +22,14 @@ export class Gadgetry {
 
     //==========================================================================
 
-    constructor(api, cfg) { // FN: Gadgetry.constructor
-        this.cfg    = cfg ? cfg : { };
+    constructor(api, config) { // FN: Gadgetry.constructor
+        this.config = config ? config : { };
         this.api    = api ? api : { };
 
-        // Fill in default config values where they are undefined in this.cfg.
+        // Fill in default config values where they are undefined in this.config.
 
         const defaults = {
             debug:         false,       // if true, returns error data to client
-//            getBase:       false,       // if non-false, the base for GET queries
             intPostCmd:    false,       // if non-false, intercept post-command
             intPreCmd:     false,       // if non-false, intercept pre-command
             intPreReq:     false,       // if non-false, intercept for incoming requests
@@ -46,25 +45,25 @@ export class Gadgetry {
         this.requestCount = 0;
 
         for(var k in defaults)
-            if(this.cfg[k] === undefined)
-                this.cfg[k] = defaults[k];
+            if(this.config[k] === undefined)
+                this.config[k] = defaults[k];
 
         // Launch the server ---------------------------------------------------
 
-        this.core(this.cfg);
+        this.core();
     }
 
 
     //==========================================================================
 
-    async core(cfg) { // FN: Gadgetry.core
+    async core() { // FN: Gadgetry.core
 
         http.createServer(async function(req, res) { //-----------------------------------
 
             this.requestCount++;
 
-            if(this.cfg.intPreReq)
-                this.cfg.intPreReq(req, res);
+            if(this.config.intPreReq)
+                this.config.intPreReq(req, res);
 
             if(req.method == "POST") {
 
@@ -72,7 +71,7 @@ export class Gadgetry {
                     var bb = Busboy({
                         headers: req.headers,
                         limits: {
-                            fieldSize: this.cfg.maxFieldSize,
+                            fieldSize: this.config.maxFieldSize,
                         }
                     });
                 } catch(e) {
@@ -92,10 +91,10 @@ export class Gadgetry {
 
                 bb.on("file", function(fieldname, file, filename, encoding, mimetype) {
 
-                    if(req.files.length >= this.cfg.maxFileCount) {
+                    if(req.files.length >= this.config.maxFileCount) {
                         for(var f of req.files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
-                        this.cfg.logger("request", { errcode: "REQERROR", errmsg: "maxFileCount exceeded."});
+                        this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFileCount exceeded."});
                         this.finalizeResponse(req, res, 413);
                     }
 
@@ -113,11 +112,11 @@ export class Gadgetry {
 
                     file.on("data", function(data) {
                         filerec.bytes += data.length;
-                        if(filerec.bytes > this.cfg.maxFileSize) {
+                        if(filerec.bytes > this.config.maxFileSize) {
                             for(var f of req.files)
                                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                             req.files = [ ];
-                            this.cfg.logger("request", { errcode: "REQERROR", errmsg: "maxFileSize exceeded."});
+                            this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFileSize exceeded."});
                             this.finalizeResponse(req, res, 413);
                         } else {
                             fs.writeSync(filerec.fd, data);
@@ -138,8 +137,8 @@ export class Gadgetry {
                 //--------------------------------------------------------------
 
                 bb.on("field", function(fieldname, val, fieldnameTruncated, valTruncated, encoding, mimetype) {
-                    if(req.params.length >= this.cfg.maxFieldCount) {
-                        this.cfg.logger("request", { errcode: "REQERROR", errmsg: "maxFieldCount exceeded."});
+                    if(req.params.length >= this.config.maxFieldCount) {
+                        this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFieldCount exceeded."});
                         this.finalizeResponse(req, res, 413);
                     }
                     req.params[fieldname] = val;
@@ -155,23 +154,23 @@ export class Gadgetry {
                     var payload;
 
                     if(req.params === undefined || req.params.payload === undefined) {
-                        this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Params or payload undefined."});
+                        this.config.logger("api", { errcode: "REQERROR", errmsg: "Params or payload undefined."});
                         this.finalizeResponse(req, res, 400);
                     }
 
                     try {
                         payload = JSON.parse(req.params.payload);
                         if(!payload)
-                            this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Empty payload."});
+                            this.config.logger("api", { errcode: "REQERROR", errmsg: "Empty payload."});
                     } catch(e) {
-                        this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Unable to parse payload."});
+                        this.config.logger("api", { errcode: "REQERROR", errmsg: "Unable to parse payload."});
                         this.finalizeResponse(req, res);
                     }
 
                     try {
                         var content = await this.commandLoop(payload, req.files, req, res);
                     } catch(e) {
-                        this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
+                        this.config.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
                         this.finalizeResponse(req, res, 500);
                     }
 
@@ -181,7 +180,7 @@ export class Gadgetry {
                         try {
                             this.finalizeResponse(req, res, 200, JSON.stringify(content));
                         } catch(e) {
-                            this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
+                            this.config.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
                         }
                     }
                 }.bind(this));
@@ -197,37 +196,13 @@ export class Gadgetry {
                 }).end();
 
             } else if(req.method == "GET") {
-/*
-                if(this.cfg.getBase) {
 
-                    var payload = this.getQueryToPayload(req.url, this.cfg.getBase);
-
-                    try {
-                        var content = await this.commandLoop(payload, [], req, res);
-                    } catch(e) {
-                        this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
-                        this.finalizeResponse(req, res);
-                    }
-
-                    if(content === undefined) {
-                        this.finalizeResponse(req, res);
-                    } else {
-                        try {
-                            this.finalizeResponse(req, res, 200, JSON.stringify(content));
-                        } catch(e) {
-                            this.cfg.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
-                        }
-                    }
-
-                } else {
-                     this.finalizeResponse(req, res, 204);
-                }
-*/
                 this.finalizeResponse(req, res, 204);
+
             }
 
-        }.bind(this)).listen(this.cfg.port, function() {
-            console.log("Listening for connections on port " + this.cfg.port);
+        }.bind(this)).listen(this.config.port, function() {
+            console.log("Listening for connections on port " + this.config.port);
         }.bind(this));
 
     }
@@ -240,7 +215,7 @@ export class Gadgetry {
     async commandLoop(payload, files, req, res) {  // FN: commandLoop
 
         if(payload === undefined) {
-            this.cfg.logger("api", { errcode: "CMDERROR", errmsg: "Payload is undefined." });
+            this.config.logger("api", { errcode: "CMDERROR", errmsg: "Payload is undefined." });
             return undefined;
         }
 
@@ -260,11 +235,11 @@ export class Gadgetry {
 
             for(var i = 0; i < clen; i++) {
 
-                if(this.cfg.intPreCmd)
-                    this.cfg.intPreCmd(req, res, cmd[i]);
+                if(this.config.intPreCmd)
+                    this.config.intPreCmd(req, res, cmd[i]);
 
                 var cmd      = cmds[i].cmd;
-                var args     = cmds[i].args;
+                var args     = cmds[i].args === undefined ? { } : cmds[i].args;
                 var id       = cmds[i].id;
                 var cfunc    = this.api[cmd];
                 var cguid    = guid();
@@ -272,25 +247,25 @@ export class Gadgetry {
 
                 if(cfunc) {
                     try {
-                        if(this.cfg.logger)
-                            this.cfg.logger("preCommand", { cguid: cguid, cmd: cmd, args: args});
+                        if(this.config.logger)
+                            this.config.logger("preCommand", { cguid: cguid, cmd: cmd, args: args});
                         var cres = await cfunc(args, files, cguid, req, res);
                         files = [ ];
                     } catch(e) {
-                        this.cfg.logger("api", { errcode: "CMDERROR", errmsg: "Exception thrown by command " + cmd, error: e });
-                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: args, _e: this.cfg.debug ? e : null };
+                        this.config.logger("api", { errcode: "CMDERROR", errmsg: "Exception thrown by command " + cmd, error: e });
+                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: args, _e: this.config.debug ? e : null };
                     }
 
                     var exectime = Date.now() - cmdStart;
                     if(benchmark && typeof cres == "object")
                         cres._exectime = exectime;
-                    this.cfg.logger("postCommand", { cmd: cmd, cguid: cguid, exectime: exectime });
+                    this.config.logger("postCommand", { cmd: cmd, cguid: cguid, exectime: exectime });
 
                     if(id !== undefined)
                         cres._id = id;
 
-                    if(this.cfg.intPostCmd)
-                        this.cfg.intPostCmd(req, res, cmd[i], cres);
+                    if(this.config.intPostCmd)
+                        this.config.intPostCmd(req, res, cmd[i], cres);
 
                     result.results.push(cres);
                     if(cres._errcode) {
@@ -302,10 +277,10 @@ export class Gadgetry {
                     } else {
                         result.worked++;
                     }
-                    if(this.cfg.logger)
-                        this.cfg.logger("commandResult", { cguid: cguid, result: cres });
+                    if(this.config.logger)
+                        this.config.logger("commandResult", { cguid: cguid, result: cres });
                 } else {
-                    this.cfg.logger("api", { errcode: "REQERROR", errmsg: "Invalid command " + cmd, error: e });
+                    this.config.logger("api", { errcode: "REQERROR", errmsg: "Invalid command " + cmd, error: e });
                     return undefined;
                 }
 
@@ -321,37 +296,6 @@ export class Gadgetry {
         }
     }
 
-/*
-    //==========================================================================
-    // Converts an inbound GET URL into a payload object suitable for passing to
-    // commandLoop. Returns false if the beginning of the URL does not match
-    // this.cfg.getBase.
-    //==========================================================================
-
-    getQueryToPayload(getString, base) { // FN: Gadgetry.getQueryToPayload
-        var [path, query] = getString.split("?");
-        path = path.replace(/\/+/g, "/");
-        if(base != path.substr(0, base.length))
-            return false;
-        path = path.substr(base.length);
-
-        var args;
-
-        if(query !== undefined && query.length) {
-            args = qs.parse(query);
-        } else
-            args = { };
-
-        path = path.split("/");
-        var cmd = path.shift();
-        for(var i = 0; i < path.length; i += 2)
-            if(path[i].length)
-                args[path[i]] = path[i+1];
-
-
-        return { cmds: [{ cmd: cmd, args: args }] };
-    }
-*/
 
     //==========================================================================
     // Sends the response.
@@ -360,8 +304,8 @@ export class Gadgetry {
     finalizeResponse(req, res, status = 400, content = "") { // FN: Gadgetry.finalizeResponse
         if(res.gadgetryStatus !== undefined)
             status = res.gadgetryStatus;
-        if(this.cfg.intPreRes)
-            this.cfg.intPreRes(req, res);
+        if(this.config.intPreRes)
+            this.config.intPreRes(req, res);
         res.writeHead(status, {
             Connection: "close",
             "Access-Control-Allow-Origin": (req.headers.origin || "none"),

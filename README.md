@@ -25,7 +25,17 @@ hide the few details involved in making a request.
     * [Uploading Files](#uploads)
 * [Class Reference](#classreference)
     * [Gadgetry (server side)](#gadgetryclass)
+        * [`constructor`](#gadgetryconstructor)
     * [GQuery (client side)](#gqueryclass)
+        * [`constructor`](#gqueryconstructor)
+        * [`addCommand`](#gqueryaddcommand)
+        * [`addFile`](#gqueryaddfile)
+        * [`benchmark`](#gquerybenchmark)
+        * [`exec`](#gqueryexec)
+        * [`getFilesFromForm`](#gquerygetfilesfromform)
+        * [`ignoreErrors`](#gqueryignoreerrors)
+        * [`req`](#gqueryreq)
+        * [`reset`](#gqueryreset)
 * [Low-Level Request/Response Details](#lowlevel)
 
 ## Installation <a name="installation"></a>
@@ -83,7 +93,7 @@ this:
 It's that simple. You send an arbitrary object to a named function on the server
 side, and you get its response back as another object. There are a few extra
 details and conventions you'll need to know to write real world APIs with
-Gadgetry, but you can fit them on an index card.
+Gadgetry, but you could fit them all on an index card.
 
 
 ## Features <a name="features"></a>
@@ -143,9 +153,9 @@ async function basicSample(args) {
 }
 ```
 
-Either the `args` object or the result object can contain anything that can be
-serialized into JSON. (Gadgetry takes care of the serialization and
-unserialization behind the scenes.)
+Both the `args` object and the result object can contain anything that can be
+serialized into JSON. Gadgetry takes care of the serialization and
+unserialization behind the scenes.
 
 To tell Gadgetry and the client that an error has occurred, the result object
 should contain a `_errcode` element. It doesn't matter what its value is, but
@@ -175,7 +185,7 @@ retained on the server. Elements of that array look like this:
 }
 ```
 
-The `cguid` argument is a unique identifier for the current request. This can
+The `cguid` argument is a unique identifier for the current API call. This can
 be useful for logging purposes.
 
 Bringing up the rear, the `req` and `res` arguments are the HTTP request and
@@ -188,7 +198,7 @@ function.
 
 By default, the `Gadgetry` object logs everything to `this.logger`, which is a
 thin wrapper around `console.log`. By setting the `logger` property in
-`Gadgetry.cfg` to point to an alternative function, logging messages can be
+`Gadgetry.config` to point to an alternative function, logging messages can be
 directed to your logging service of choice.
 
 The `logger` function must take two arguments, `type` and `data`, where `type`
@@ -208,14 +218,14 @@ containing arbitrary data. The possible `type`s are:
 
 As clean and minimalist as Gadgetry is, the real world is full of messes, and
 that sometimes requires getting into low-level details. For those (hopefully
-rare) occasions, Gadgetry provides four interceptor functions to manipulated
+rare) occasions, Gadgetry provides four interceptor functions to manipulate
 HTTP requests and responses, as well as the arguments and results of your API
 functions. You can set these in the constructor or directly in `Gadgetry.cfg`.
 
 `intPreReq(req, res)` is called before any processing with the HTTP request
 and response objects.
 
-`intPreRes(req, res)` is called right before the response is set.
+`intPreRes(req, res)` is called right before the response is sent.
 
 `intPreCmd(req, res, cmd)` is called before each command in the request is
 executed.
@@ -273,7 +283,7 @@ var results = await gq.exec();
 
 Instead of using the `req` method, you use `addCommand` to queue individual API
 calls and then call `exec` to fire the whole batch off to the server in a single
-batch.
+request.
 
 The `results` come back as an array of objects in the same order as the
 individual API functions were added to the batch. Even so, it can sometimes be
@@ -329,43 +339,43 @@ gq.addFile("fieldname", fileObj);
 ```
 
 All you have to do is call the `addFile` method with a form field name and a
-browser `File` object. Why bother with a form field name? Do remember that
-uploaded files are associated with (and accessible to) all of the function calls
-in the batch rather than being part of any individual function's arguments. If
-you are uploading multiple files and need a way to distinguish between them on
-the server side, the field name is a good way to handle that.
+browser `File` object. Why bother with a form field name? Uploaded files are
+associated with (and accessible to) all of the function calls in the batch
+rather than being part of any individual function's arguments. If you are
+uploading multiple files and need a way to distinguish between them on the
+server side, the field name is a good way to handle that.
 
 ## Class Reference <a name="classreference"></a>
 
-### Gadgetry (server side) <a name="#gadgetryclass"></a>
+### Gadgetry (server side) <a name="gadgetryclass"></a>
 
-#### constructor(api, cfg = { })
+#### constructor(api, config = { }) <a name="gadgetryconstructor"></a>
 
 The constructor is the `Gadgetry` class' only public method. It takes two
 arguments. The first, `api`, is required and is an object whose keys are the
 names of API functions and whose values are the actual JavaScript functions that
-carry them out. The second argument, `cfg`, is optional, but will be used by
-most real world applications. The possible values of `cfg` and their defaults
+carry them out. The second argument, `config`, is optional, but will be used by
+most real world applications. The possible values of `config` and their defaults
 are as follows:
 
-| Name          | Default       | Description                                                                                                      |
-|---------------|---------------|------------------------------------------------------------------------------------------------------------------|
-| debug         | `false`       | If `true`, returns error data to the client when an exception occurs during the execution of an API function.    |
-| intPostCmd    | `false`       | A function to intercept the results of API function calls. See [Interceptors](#interceptors) for details.        |
-| intPreCmd     | `false`       | A function to fire before API function calls. See [Interceptors](#interceptors) for details.                     |
-| intPreReq     | `false`       | A function called with the initial request. See [Interceptors](#interceptors) for details.                       |
-| intPreRes     | `false`       | A function called with the response before sending to the client. See [Interceptors](#interceptors) for details. |
-| logger        | `this.logger` | A function to receive logging data. See [Logging](#logging) for details.                                         |
-| maxFieldCount | `Infinity`    | Maximum number of form fields.                                                                                   |
-| maxFieldSize  | `Infinity`    | Maximum size of individual form fields.                                                                          |
-| maxFileCount  | `Infinity`    | Maximum number of files allowed with each request or batch of requests.                                          |
-| maxFileSize   | `Infinity`    | Maximum file size.                                                                                               |
-| port          | 8080          | Port to listen on.                                                                                               |
+| Name          | Default       | Description                                                                                                           |
+|---------------|---------------|-----------------------------------------------------------------------------------------------------------------------|
+| debug         | `false`       | If `true`, returns error data as `_e` to the client when an exception occurs during the execution of an API function. |
+| intPostCmd    | `false`       | A function to intercept the results of API function calls. See [Interceptors](#interceptors) for details.             |
+| intPreCmd     | `false`       | A function to fire before API function calls. See [Interceptors](#interceptors) for details.                          |
+| intPreReq     | `false`       | A function called with the initial request. See [Interceptors](#interceptors) for details.                            |
+| intPreRes     | `false`       | A function called with the response before sending to the client. See [Interceptors](#interceptors) for details.      |
+| logger        | `this.logger` | A function to receive logging data. See [Logging](#logging) for details.                                              |
+| maxFieldCount | `Infinity`    | Maximum number of form fields.                                                                                        |
+| maxFieldSize  | `Infinity`    | Maximum size of individual form fields.                                                                               |
+| maxFileCount  | `Infinity`    | Maximum number of files allowed with each request or batch of requests.                                               |
+| maxFileSize   | `Infinity`    | Maximum file size.                                                                                                    |
+| port          | 8080          | Port to listen on.                                                                                                    |
 
 
-### GQuery (client side) <a name="#queryclass"></a>
+### GQuery (client side) <a name="queryclass"></a>
 
-#### `constructor(url, params = { })`
+#### `constructor(url, params = { })` <a name="gqueryconstructor"></a>
 
 **Arguments:**
 
@@ -378,9 +388,10 @@ are as follows:
 
 ---
 
-#### `addCommand(cmd, args = { }, id = null)`
+#### `addCommand(cmd, args = { }, id = null)` <a name="gqueryaddcommand"></a>
 
-Adds a new API request to the pending batch.
+Adds a new API request to the pending batch to be sent to the server when the
+[`exec`](#gqueryexec) method is called.
 
 **Arguments:**
 
@@ -394,23 +405,23 @@ Adds a new API request to the pending batch.
 
 ---
 
-#### `addFile(name, fileObject)`
+#### `addFile(name, fileObject)` <a name="gqueryaddfile"></a>
 
 **Arguments:**
 
-| name       | description |
-|------------|-------------|
-| name       |
-| fileObject |
+| name       | description                |
+|------------|----------------------------|
+| name       | A field name for the file. |
+| fileObject | A `File` object.           |
 
 **Returns:** `this`
 
 ---
 
-#### `benchmark(val)`
+#### `benchmark(val)` <a name="gquerybenchmark"></a>
 
 This method sets the value of the internal `benchmark` flag. While this is `true`,
-responses from the server will including `_exectime` elements containing the number
+responses from the server will include `_exectime` elements containing the number
 of milliseconds required to execute the requested API function.
 
 **Arguments:**
@@ -423,9 +434,9 @@ of milliseconds required to execute the requested API function.
 
 ---
 
-#### `exec()`
+#### `async exec()` <a name="gqueryexec"></a>
 
-The `exec` method sends the whole pending batch of API calls created with `addCommand`
+The `exec` method sends the whole pending batch of API calls created with [`addCommand`](#gqueryaddcommand)
 to the server for execution and returns the results array when it arrives, which it
 also assigns to its `results` member. Upon completion of the request, several additional
 members will be set with statistical values from the transaction:
@@ -443,7 +454,7 @@ members will be set with statistical values from the transaction:
 
 ---
 
-#### `getFilesFromForm(formobj)`
+#### `getFilesFromForm(formobj)` <a name="querygetfilesfromform"></a>
 
 This convenience method takes a `Form` object with file inputs and calls
 `addFile` on each one, sparing you the inconvenience of instantiating a
@@ -459,7 +470,7 @@ bunch of `File` objects.
 
 ---
 
-#### `ignoreErrors(val)`
+#### `ignoreErrors(val)` <a name="gqueryignoreerrors"></a>
 
 Sets the internal `ignoreErrors` flag. If `false`, a batch of API functions will
 be halted when the first one fails, i.e., returns an object containing `_errcode`.
@@ -476,7 +487,7 @@ regardless of success or failure.
 
 ---
 
-#### `req(cmd, args, id = null)`
+#### `async req(cmd, args, id = null)` <a name="gqueryreq"></a>
 
 Sends a single API call to the server for immediate execution.
 
@@ -492,7 +503,7 @@ Sends a single API call to the server for immediate execution.
 
 ---
 
-#### `reset()`
+#### `reset()` <a name="gqueryreset"></a>
 
 After a batch request has been sent to the server and the results received,
 you must call the `reset` method to clear out the internal state so the `GQuery`
@@ -604,6 +615,7 @@ invariant code that client-side code can depend on.
 TODO:
 
     * More testing...
+    * Second draft of documentation
     * Gadgetry
         * Make sure Busboy gets Gadgetry limits and that Gadgetry recognizes when they have been exceeded.
 
