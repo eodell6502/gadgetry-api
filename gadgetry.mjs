@@ -68,12 +68,7 @@ export class Gadgetry {
             if(req.method == "POST") {
 
                 try {
-                    var bb = Busboy({
-                        headers: req.headers,
-                        limits: {
-                            fieldSize: this.config.maxFieldSize,
-                        }
-                    });
+                    var bb = Busboy({ headers: req.headers });
                 } catch(e) {
                     console.log("Fatal Busboy initialization error", e, req.headers);
                     process.exit(1);
@@ -89,28 +84,29 @@ export class Gadgetry {
                 // temporary files and add to the req.files data structure.
                 //--------------------------------------------------------------
 
-                bb.on("file", function(fieldname, file, filename, encoding, mimetype) {
+                bb.on("file", function(fieldname, stream, fileinfo) {
 
                     if(req.files.length >= this.config.maxFileCount) {
                         for(var f of req.files)
                             try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
                         this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFileCount exceeded."});
                         this.finalizeResponse(req, res, 413);
+                        return;
                     }
 
                     var tmpobj = tmp.fileSync({detachDescriptor: true});
                     var filerec = {
                         field:     fieldname,
-                        filename:  filename.filename,
-                        encoding:  filename.encoding,
-                        mimeType:  filename.mimeType,
+                        filename:  fileinfo.filename,
+                        encoding:  fileinfo.encoding,
+                        mimeType:  fileinfo.mimeType,
                         tmpfile:   tmpobj.name,
                         fd:        tmpobj.fd,
                         bytes:     0,
                     };
                     req.files.push(filerec);
 
-                    file.on("data", function(data) {
+                    stream.on("data", function(data) {
                         filerec.bytes += data.length;
                         if(filerec.bytes > this.config.maxFileSize) {
                             for(var f of req.files)
@@ -118,12 +114,13 @@ export class Gadgetry {
                             req.files = [ ];
                             this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFileSize exceeded."});
                             this.finalizeResponse(req, res, 413);
+                            return;
                         } else {
                             fs.writeSync(filerec.fd, data);
                         }
                     }.bind(this));
 
-                    file.on("end", function() {
+                    stream.on("end", function() {
                         fs.closeSync(filerec.fd);
                         delete filerec.fd;
                     });
@@ -137,9 +134,15 @@ export class Gadgetry {
                 //--------------------------------------------------------------
 
                 bb.on("field", function(fieldname, val, fieldnameTruncated, valTruncated, encoding, mimetype) {
-                    if(req.params.length >= this.config.maxFieldCount) {
+                    if(req.params.length > this.config.maxFieldCount ) {
                         this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFieldCount exceeded."});
                         this.finalizeResponse(req, res, 413);
+                        return;
+                    }
+                    if(val.length > this.config.maxFieldSize ) {
+                        this.config.logger("request", { errcode: "REQERROR", errmsg: "maxFieldSize exceeded."});
+                        this.finalizeResponse(req, res, 413);
+                        return;
                     }
                     req.params[fieldname] = val;
                 }.bind(this));
@@ -156,6 +159,7 @@ export class Gadgetry {
                     if(req.params === undefined || req.params.payload === undefined) {
                         this.config.logger("api", { errcode: "REQERROR", errmsg: "Params or payload undefined."});
                         this.finalizeResponse(req, res, 400);
+                        return;
                     }
 
                     try {
@@ -165,6 +169,7 @@ export class Gadgetry {
                     } catch(e) {
                         this.config.logger("api", { errcode: "REQERROR", errmsg: "Unable to parse payload."});
                         this.finalizeResponse(req, res);
+                        return;
                     }
 
                     try {
@@ -172,6 +177,7 @@ export class Gadgetry {
                     } catch(e) {
                         this.config.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
                         this.finalizeResponse(req, res, 500);
+                        return;
                     }
 
                     if(content === undefined) {
@@ -179,6 +185,7 @@ export class Gadgetry {
                     } else {
                         try {
                             this.finalizeResponse(req, res, 200, JSON.stringify(content));
+                            return;
                         } catch(e) {
                             this.config.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
                         }
@@ -236,7 +243,7 @@ export class Gadgetry {
             for(var i = 0; i < clen; i++) {
 
                 if(this.config.intPreCmd)
-                    this.config.intPreCmd(req, res, cmd[i]);
+                    this.config.intPreCmd(req, res, cmds[i]);
 
                 var cmd      = cmds[i].cmd;
                 var args     = cmds[i].args === undefined ? { } : cmds[i].args;
@@ -302,6 +309,7 @@ export class Gadgetry {
     //==========================================================================
 
     finalizeResponse(req, res, status = 400, content = "") { // FN: Gadgetry.finalizeResponse
+
         if(res.gadgetryStatus !== undefined)
             status = res.gadgetryStatus;
         if(this.config.intPreRes)

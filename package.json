@@ -1,6 +1,6 @@
 {
   "name": "gadgetry-api",
-  "version": "0.0.1",
+  "version": "0.5.0",
   "description": "A minimalist web API framework with an RPC style",
   "main": "gadgetry.js",
   "scripts": {
@@ -10,6 +10,7 @@
   "license": "BSD-2-Clause",
   "dependencies": {
     "busboy": "^1.6.0",
-    "dyna-guid": "^2.1.2"
+    "dyna-guid": "^2.1.2",
+    "tmp": "^0.2.1"
   }
 }

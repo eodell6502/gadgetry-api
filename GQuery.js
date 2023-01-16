@@ -4,17 +4,17 @@ class GQuery {
     //--------------------------------------------------------------------------
 
     constructor(url, params = { }) {
-        this.url          = url;
-        this.benchmark    = false;
-        this.ignoreErrors = false;
-        this.cmds         = null;
-        this.results      = null;
-        this.worked       = null;
-        this.failed       = null;
-        this.aborted      = null;
-        this.cmdcnt       = null;
-        this.exectime     = null;
-        this.files        = null;
+        this.url           = url;
+        this._benchmark    = false;
+        this._ignoreErrors = false;
+        this.cmds          = null;
+        this.results       = null;
+        this.worked        = null;
+        this.failed        = null;
+        this.aborted       = null;
+        this.cmdcnt        = null;
+        this.exectime      = null;
+        this.files         = null;
 
         for(var k in params)
             if(this[k] !== undefined)
@@ -36,14 +36,14 @@ class GQuery {
     //--------------------------------------------------------------------------
 
     benchmark(val) {
-        this.benchmark = val ? true : false;
+        this._benchmark = val ? true : false;
         return this;
     }
 
     //--------------------------------------------------------------------------
 
     ignoreErrors(val) {
-        this.ignoreErrors = val ? true : false;
+        this._ignoreErrors = val ? true : false;
         return this;
     }
 
@@ -74,8 +74,7 @@ class GQuery {
 
     async exec() {
         var payload = { cmds: this.cmds };
-        if(this.params !== null)
-            payload.params = this.params;
+        payload.params = { benchmark: this._benchmark, ignoreErrors: this._ignoreErrors };
 
         var data = new FormData();
         data.append("payload", JSON.stringify(payload));

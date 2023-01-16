@@ -614,10 +614,6 @@ invariant code that client-side code can depend on.
 
 TODO:
 
-    * More testing...
-    * Gadgetry
-        * Make sure Busboy gets Gadgetry limits and that Gadgetry recognizes when they have been exceeded.
-
 -->
 
 
