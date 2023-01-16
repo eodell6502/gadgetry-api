@@ -1,4 +1,4 @@
-# gadgetry-api v0.0.1
+# gadgetry-api v0.5.1
 
 ![Gadgetry title](img/gadgetry.png)
 
