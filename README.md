@@ -606,7 +606,7 @@ Failed commands will contain `_errcode`. The optional convention shown here
 includes an `_errmsg` element that contains a human-readable error message
 which, depending on the situation, might be intended for display to an end user
 in a user interface, but which may be expected to change over time as the API
-evolves. The `errcode` element, on the other hand, is intended to be a short,
+evolves. The `_errcode` element, on the other hand, is intended to be a short,
 invariant code that client-side code can depend on.
 
 
