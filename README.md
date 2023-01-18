@@ -1,6 +1,8 @@
-# gadgetry-api v0.5.2
+# gadgetry-api v0.6.0
 
 ![Gadgetry title](img/gadgetry.jpg)
+
+**NEW in v0.6.0: GET request support**
 
 Gadgetry is a minimalist web API framework that follows the Unix philosophy of
 doing one thing and doing it well. Gadgetry ignores all of the non-essential
@@ -23,6 +25,7 @@ hide the few details involved in making a request.
     * [Single Requests](#singlereqs)
     * [Batched Requests](#batchreqs)
     * [Uploading Files](#uploads)
+* [GET Requests](#getrequests)
 * [Class Reference](#classreference)
     * [Gadgetry (server side)](#gadgetryclass)
         * [`constructor`](#gadgetryconstructor)
@@ -140,6 +143,8 @@ applications. Its members are:
 | `intPreCmd`     | `false`       | Intercept pre-command. See [Interceptors](#interceptors). |
 | `intPreReq`     | `false`       | Intercept incoming request. See [Interceptors](#interceptors). |
 | `intPreRes`     | `false`       | Intercept outgoing response. See [Interceptors](#interceptors). |
+| `useGet`        | `false`       | If `true`, GET requests will be accepted. |
+| `getTrim`       | `false`       | A leading string to remove from the URL when processing GET requests. |
 
 
 ### API Functions <a name="apifuncs"></a>
@@ -345,6 +350,40 @@ rather than being part of any individual function's arguments. If you are
 uploading multiple files and need a way to distinguish between them on the
 server side, the field name is a good way to handle that.
 
+## GET Requests <a name="getrequests"></a>
+
+While Gadgetry is focused on being a JSON-over-POST API server, certain
+situations require the occasional GET request, so Gadgetry handles those as
+well. To enable GET support, set the `useGet` config value to `true` when
+calling the `Gadgetry` constructor. Depending on your setup, you will probably
+have to set the `getTrim` config value as well, but we'll come back to that
+shortly.
+
+A Gadgetry GET URL consists of an optional leading section, which is removed if
+it matches `getTrim`, a function name, optional key/value pairs separated by
+slashes, and an optional query string:
+
+```
+http://yourdomain.com/leading/stuff/getCircleArea/radius/2.5?unit=cm
+```
+
+In this example, the protocol and domain (`http://yourdomain.com`) is discarded,
+and if `getTrim` is set to `"/leading/stuff/"`, that is discarded as well. The
+API function being called is `getCircleArea`, and it receives two parameters,
+`radius` and `unit`, which are set to `2.5` and `"cm"`, respectively. All of the
+following are equivalent:
+
+```
+http://yourdomain.com/leading/stuff/getCircleArea/radius/2.5?unit=cm
+http://yourdomain.com/leading/stuff/getCircleArea/radius/2.5/unit/cm
+http://yourdomain.com/leading/stuff/getCircleArea?radius=2.5&unit=cm
+```
+
+As you can see, it doesn't matter if you pack your function arguments into the
+URL itself or the query string or both; whatever works best for your use case
+is fine. It is worth noting that if there are any duplicate argument names, later
+uses override earlier ones.
+
 ## Class Reference <a name="classreference"></a>
 
 ### Gadgetry (server side) <a name="gadgetryclass"></a>
@@ -360,17 +399,19 @@ are as follows:
 
 | Name          | Default       | Description                                                                                                           |
 |---------------|---------------|-----------------------------------------------------------------------------------------------------------------------|
-| debug         | `false`       | If `true`, returns error data as `_e` to the client when an exception occurs during the execution of an API function. |
-| intPostCmd    | `false`       | A function to intercept the results of API function calls. See [Interceptors](#interceptors) for details.             |
-| intPreCmd     | `false`       | A function to fire before API function calls. See [Interceptors](#interceptors) for details.                          |
-| intPreReq     | `false`       | A function called with the initial request. See [Interceptors](#interceptors) for details.                            |
-| intPreRes     | `false`       | A function called with the response before sending to the client. See [Interceptors](#interceptors) for details.      |
-| logger        | `this.logger` | A function to receive logging data. See [Logging](#logging) for details.                                              |
-| maxFieldCount | `Infinity`    | Maximum number of form fields.                                                                                        |
-| maxFieldSize  | `Infinity`    | Maximum size of individual form fields.                                                                               |
-| maxFileCount  | `Infinity`    | Maximum number of files allowed with each request or batch of requests.                                               |
-| maxFileSize   | `Infinity`    | Maximum file size.                                                                                                    |
-| port          | 8080          | Port to listen on.                                                                                                    |
+| `debug`         | `false`       | If `true`, returns error data as `_e` to the client when an exception occurs during the execution of an API function. |
+| `intPostCmd`    | `false`       | A function to intercept the results of API function calls. See [Interceptors](#interceptors) for details.             |
+| `intPreCmd`     | `false`       | A function to fire before API function calls. See [Interceptors](#interceptors) for details.                          |
+| `intPreReq`     | `false`       | A function called with the initial request. See [Interceptors](#interceptors) for details.                            |
+| `intPreRes`     | `false`       | A function called with the response before sending to the client. See [Interceptors](#interceptors) for details.      |
+| `logger`        | `this.logger` | A function to receive logging data. See [Logging](#logging) for details.                                              |
+| `maxFieldCount` | `Infinity`    | Maximum number of form fields.                                                                                        |
+| `maxFieldSize`  | `Infinity`    | Maximum size of individual form fields.                                                                               |
+| `maxFileCount`  | `Infinity`    | Maximum number of files allowed with each request or batch of requests.                                               |
+| `maxFileSize`   | `Infinity`    | Maximum file size.                                                                                                    |
+| `port`          | `8080`        | Port to listen on.                                                                                                    |
+| `useGet`        | `false`       | If `true`, GET requests will be accepted. |
+| `getTrim`       | `false`       | A leading string to remove from the URL when processing GET requests. |
 
 
 ### GQuery (client side) <a name="queryclass"></a>
@@ -614,8 +655,6 @@ invariant code that client-side code can depend on.
 
 TODO:
 
-    * GET support
-        * buildPayload
     * getGuid()
     * File downloads
 

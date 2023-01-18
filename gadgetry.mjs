@@ -30,6 +30,7 @@ export class Gadgetry {
 
         const defaults = {
             debug:         false,       // if true, returns error data to client
+            getTrim:       false,       // If non-false, the leading part of the URL to trim
             intPostCmd:    false,       // if non-false, intercept post-command
             intPreCmd:     false,       // if non-false, intercept pre-command
             intPreReq:     false,       // if non-false, intercept for incoming requests
@@ -40,9 +41,7 @@ export class Gadgetry {
             maxFileCount:  Infinity,    // max file uploads per request
             maxFileSize:   Infinity,    // max uploaded file size
             port:          8080,        // port to listen on
-
             useGet:        false,       // if true, allow GET requests
-            getTrim:       false,       // If non-false, the leading part of the URL to trim
         };
 
         this.requestCount = 0;
