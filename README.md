@@ -562,8 +562,8 @@ named, unordered arguments to the function. Finally, the optional `id` element i
 attached to the command results to make it easier to identify.
 
 For the purposes of this example, we'll assume that the second command,
-`"getSales"` failed. The response, also JSON-encoded in transit, would look something
-like this:
+`"getSales"` failed. The response, also JSON-encoded in transit, would look
+something like this:
 
 ```javascript
 {
@@ -577,7 +577,7 @@ like this:
 
     results: [             // array of results, in same order as in request
         {
-            resultField:  "....",          // output of command, can be any type
+            resultField:  "....",      // output of command, can be any type
             _exectime: 2,              // runtime of command in milliseconds (if params.benchmark == true)
             _id:       "price query"   // id string passed with request
         },
@@ -613,6 +613,11 @@ invariant code that client-side code can depend on.
 <!--
 
 TODO:
+
+    * GET support
+        * buildPayload
+    * getGuid()
+    * File downloads
 
 -->
 

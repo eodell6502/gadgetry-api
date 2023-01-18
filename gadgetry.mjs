@@ -6,7 +6,7 @@ import fs           from "fs";
 import http         from "http";
 import {inspect}    from "util";
 import os           from "os";
-//import qs           from "querystring";
+import qs           from "querystring";
 
 // Third-party modules ---------------------------------------------------------
 
@@ -40,6 +40,9 @@ export class Gadgetry {
             maxFileCount:  Infinity,    // max file uploads per request
             maxFileSize:   Infinity,    // max uploaded file size
             port:          8080,        // port to listen on
+
+            useGet:        false,       // if true, allow GET requests
+            getTrim:       false,       // If non-false, the leading part of the URL to trim
         };
 
         this.requestCount = 0;
@@ -130,7 +133,9 @@ export class Gadgetry {
 
                 //--------------------------------------------------------------
                 // This event handler assembles all of the non-file field
-                // parameters into req.params.
+                // parameters into req.params. It also checks to make sure the
+                // field limits have not been exceeded, bailing out with a
+                // 413 response if they are.
                 //--------------------------------------------------------------
 
                 bb.on("field", function(fieldname, val, fieldnameTruncated, valTruncated, encoding, mimetype) {
@@ -158,8 +163,7 @@ export class Gadgetry {
 
                     if(req.params === undefined || req.params.payload === undefined) {
                         this.config.logger("api", { errcode: "REQERROR", errmsg: "Params or payload undefined."});
-                        this.finalizeResponse(req, res, 400);
-                        return;
+                        return this.finalizeResponse(req, res, 400);
                     }
 
                     try {
@@ -168,28 +172,12 @@ export class Gadgetry {
                             this.config.logger("api", { errcode: "REQERROR", errmsg: "Empty payload."});
                     } catch(e) {
                         this.config.logger("api", { errcode: "REQERROR", errmsg: "Unable to parse payload."});
-                        this.finalizeResponse(req, res);
-                        return;
+                        return this.finalizeResponse(req, res, 400);
                     }
 
-                    try {
-                        var content = await this.commandLoop(payload, req.files, req, res);
-                    } catch(e) {
-                        this.config.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
-                        this.finalizeResponse(req, res, 500);
-                        return;
-                    }
+                    await this.response(payload, req, res);
+                    return;
 
-                    if(content === undefined) {
-                        this.finalizeResponse(req, res);
-                    } else {
-                        try {
-                            this.finalizeResponse(req, res, 200, JSON.stringify(content));
-                            return;
-                        } catch(e) {
-                            this.config.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
-                        }
-                    }
                 }.bind(this));
 
             } else if(req.method == "OPTIONS") {
@@ -204,7 +192,19 @@ export class Gadgetry {
 
             } else if(req.method == "GET") {
 
-                this.finalizeResponse(req, res, 204);
+                if(this.config.useGet) {
+                    var payload = this.getToPayload(req);
+                    if(payload === null) {
+                        this.config.logger("api", { errcode: "REQERROR", errmsg: "Params or payload undefined."});
+                        return this.finalizeResponse(req, res, 400);
+                    }
+
+                    await this.response(payload, req, res);
+                    return;
+
+                } else {
+                    return this.finalizeResponse(req, res, 405);
+                }
 
             }
 
@@ -212,6 +212,31 @@ export class Gadgetry {
             console.log("Listening for connections on port " + this.config.port);
         }.bind(this));
 
+    }
+
+
+    //--------------------------------------------------------------------------
+    // Generic response subroutine.
+    //--------------------------------------------------------------------------
+
+    async response(payload, req, res) {
+        try {
+            var content = await this.commandLoop(payload, req.files, req, res);
+        } catch(e) {
+            this.config.logger("api", { errcode: "APIERROR", errmsg: "Exception thrown during command loop", error: e });
+            return this.finalizeResponse(req, res, 500);
+        }
+
+        if(content === undefined) {
+            return this.finalizeResponse(req, res, 400);
+        } else {
+            try {
+                return this.finalizeResponse(req, res, 200, JSON.stringify(content));
+            } catch(e) {
+                this.config.logger("api", { errcode: "APIERROR", errmsg: "Unable to serialize response content.", error: e });
+                return;
+            }
+        }
     }
 
 
@@ -287,7 +312,7 @@ export class Gadgetry {
                     if(this.config.logger)
                         this.config.logger("commandResult", { cguid: cguid, result: cres });
                 } else {
-                    this.config.logger("api", { errcode: "REQERROR", errmsg: "Invalid command " + cmd, error: e });
+                    this.config.logger("api", { errcode: "REQERROR", errmsg: "Invalid command " + cmd });
                     return undefined;
                 }
 
@@ -301,6 +326,33 @@ export class Gadgetry {
         } else {
             return undefined;
         }
+    }
+
+
+    //==========================================================================
+    // Converts URL with GET query string into payload.
+    //==========================================================================
+
+    getToPayload(req) {
+        var url = req.url;
+        if(this.config.getTrim && url.substr(0, this.config.getTrim.length) == this.config.getTrim)
+            url = url.substr(this.config.getTrim.length);
+        var [url, query] = url.split("?");
+        url = url.split("/");
+        if(!url.length)                       // no command?
+            return null;
+        var cmd = url.shift(); console.log(cmd, url);
+        if(url.length % 2)                    // odd number of post-command parts?
+            return null;
+        var args = { };
+        for(var i = 0; i < url.length; i += 2)
+            args[url[i]] = url[i+1];
+        if(query) {
+            var qargs = qs.parse(query);
+            for(var k in qargs)
+                args[k] = qargs[k];
+        }
+        return { cmds: [ { cmd: cmd, args: args} ] };
     }
 
 
