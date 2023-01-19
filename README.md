@@ -26,9 +26,13 @@ hide the few details involved in making a request.
     * [Batched Requests](#batchreqs)
     * [Uploading Files](#uploads)
 * [GET Requests](#getrequests)
+* [File Downloads](#filedownloads)
 * [Class Reference](#classreference)
     * [Gadgetry (server side)](#gadgetryclass)
         * [`constructor`](#gadgetryconstructor)
+        * [`guid`](#gadgetryguid)
+        * [`sendFile`](#gadgetrysendfile)
+        * [`sendStream`](#gadgetrysendstream)
     * [GQuery (client side)](#gqueryclass)
         * [`constructor`](#gqueryconstructor)
         * [`addCommand`](#gqueryaddcommand)
@@ -145,7 +149,12 @@ applications. Its members are:
 | `intPreRes`     | `false`       | Intercept outgoing response. See [Interceptors](#interceptors). |
 | `useGet`        | `false`       | If `true`, GET requests will be accepted. |
 | `getTrim`       | `false`       | A leading string to remove from the URL when processing GET requests. |
-
+| `errcodeLabel`  | `"_errcode"`  | The name of the response field which tells Gadgetry that an API error has occurred. Also used for system errors. |
+| `idLabel`       | `"_id"`       | The name of the response field containing the API call ID. |
+| `errmsgLabel`   | `"_errmsg"`   | The name of the response field containing system error messages. |
+| `errlocLabel`   | `"_errloc"`   | The name of the response field containing error locations. |
+| `argsLabel`     | `"_args"`     | The name of the response field containing API call arguments when an exception occurs. |
+| `eLabel`        | `"_e"`        | If `debug` is true, the name of the response field containing the exception produced by an API call. |
 
 ### API Functions <a name="apifuncs"></a>
 
@@ -165,7 +174,8 @@ unserialization behind the scenes.
 To tell Gadgetry and the client that an error has occurred, the result object
 should contain a `_errcode` element. It doesn't matter what its value is, but
 its presence will tell Gadgetry to abort an ongoing batch of requests if it
-has been so configured. (This is the default behavior.)
+has been so configured. (This is the default behavior. You can change the name
+of this element by setting the `errcodeLabel` config value.)
 
 The full set of arguments available to an API function actually looks like
 this:
@@ -384,21 +394,43 @@ URL itself or the query string or both; whatever works best for your use case
 is fine. It is worth noting that if there are any duplicate argument names, later
 uses override earlier ones.
 
+## File Downloads <a name="filedownloads"></a>
+
+Instead of sending a JSON response, a Gadgetry API function can send a file,
+either copied from a file on disk or produced from any readable stream. No JSON
+results are returned, and any other functions in a batch are preempted, so
+function calls producing files should generally not be batched with other calls.
+
+To send a file, call the `Gadgetry` object's [`sendFile`](#gadgetrysendfile)
+from within an API function. (In the example below, we assume that it is named
+`$G`.)
+
+```javascript
+// Don't forget that req and res are arguments to every API function
+
+$G.sendFile(req, res, "/path/to/file", "sample.txt", "text/plain");
+```
+
+At this point, Gadgetry sends the appropriate headers and begins streaming the
+file to the client. As noted above, this terminates processing of the current
+function batch. To send an arbitrary stream to the client, simply use the
+[`sendStream`](#gadgetrysendstream) method instead of `sendFile`.
+
+
 ## Class Reference <a name="classreference"></a>
 
 ### Gadgetry (server side) <a name="gadgetryclass"></a>
 
-#### constructor(api, config = { }) <a name="gadgetryconstructor"></a>
+#### `constructor(api, config = { })` <a name="gadgetryconstructor"></a>
 
-The constructor is the `Gadgetry` class' only public method. It takes two
-arguments. The first, `api`, is required and is an object whose keys are the
-names of API functions and whose values are the actual JavaScript functions that
-carry them out. The second argument, `config`, is optional, but will be used by
-most real world applications. The possible values of `config` and their defaults
-are as follows:
+The constructor takes two arguments. The first, `api`, is required and is an
+object whose keys are the names of API functions and whose values are the actual
+JavaScript functions that carry them out. The second argument, `config`, is
+optional, but will be used by most real world applications. The possible values
+of `config` and their defaults are as follows:
 
-| Name          | Default       | Description                                                                                                           |
-|---------------|---------------|-----------------------------------------------------------------------------------------------------------------------|
+| Name            | Default       | Description                                                                                                           |
+|-----------------|---------------|-----------------------------------------------------------------------------------------------------------------------|
 | `debug`         | `false`       | If `true`, returns error data as `_e` to the client when an exception occurs during the execution of an API function. |
 | `intPostCmd`    | `false`       | A function to intercept the results of API function calls. See [Interceptors](#interceptors) for details.             |
 | `intPreCmd`     | `false`       | A function to fire before API function calls. See [Interceptors](#interceptors) for details.                          |
@@ -412,6 +444,62 @@ are as follows:
 | `port`          | `8080`        | Port to listen on.                                                                                                    |
 | `useGet`        | `false`       | If `true`, GET requests will be accepted. |
 | `getTrim`       | `false`       | A leading string to remove from the URL when processing GET requests. |
+| `errcodeLabel`  | `"_errcode"`  | The name of the response field which tells Gadgetry that an API error has occurred. Also used for system errors. |
+| `idLabel`       | `"_id"`       | The name of the response field containing the API call ID. |
+| `errmsgLabel`   | `"_errmsg"`   | The name of the response field containing system error messages. |
+| `errlocLabel`   | `"_errloc"`   | The name of the response field containing error locations. |
+| `argsLabel`     | `"_args"`     | The name of the response field containing API call arguments when an exception occurs. |
+| `eLabel`        | `"_e"`        | If `debug` is true, the name of the response field containing the exception produced by an API call. |
+
+
+---
+
+#### `guid()` <a name="gadgetryguid"></a>
+
+Gadgetry generates GUIDs for each inbound API function call. This method exposes
+that functionality to the user. Calling it returns a new GUID string.
+
+---
+
+#### `sendFile(req, res, filepath, filename, contentType = false)` <a name="gadgetrysendfile"></a>
+
+This method interrupts the normal flow of request handling to send a file to the
+client. It should be called from within an API function. For more information about
+how to use it, see [File Downloads](#filedownloads).
+
+**Arguments:**
+
+| name        | description                                                                   |
+|-------------|-------------------------------------------------------------------------------|
+| req         | The inbound request object.                                                   |
+| res         | The outbound response object.                                                 |
+| filepath    | The path to the file to be transferred.                                       |
+| filename    | The filename to be given to the client.                                       |
+| contentType | The value of the Content-Type header. Defaults to `application/octet-stream`. |
+
+**Returns:** `undefined`
+
+---
+
+#### `sendStream(req, res, filepath, filename, contentType = false, size = false)` <a name="gadgetrysendstream"></a>
+
+Interrupts the normal flow of request handling to send an arbitrary stream as a
+file to the client. It should be called from within an API function. For more
+information about how to use it, see [File Downloads](#filedownloads).
+
+**Arguments:**
+
+| name        | description                                                                   |
+|-------------|-------------------------------------------------------------------------------|
+| req         | The inbound request object.                                                   |
+| res         | The outbound response object.                                                 |
+| filepath    | The path to the file to be transferred.                                       |
+| filename    | The filename to be given to the client.                                       |
+| contentType | The value of the Content-Type header. Defaults to `application/octet-stream`. |
+| size        | If supplied, the total size of the streamed data in bytes.                    |
+
+**Returns:** `undefined`
+
 
 
 ### GQuery (client side) <a name="queryclass"></a>
@@ -655,8 +743,7 @@ invariant code that client-side code can depend on.
 
 TODO:
 
-    * getGuid()
-    * File downloads
+    * Multiple file downloads
 
 -->
 

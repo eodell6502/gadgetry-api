@@ -6,6 +6,7 @@ import fs           from "fs";
 import http         from "http";
 import {inspect}    from "util";
 import os           from "os";
+import stream       from "stream";
 import qs           from "querystring";
 
 // Third-party modules ---------------------------------------------------------
@@ -42,6 +43,12 @@ export class Gadgetry {
             maxFileSize:   Infinity,    // max uploaded file size
             port:          8080,        // port to listen on
             useGet:        false,       // if true, allow GET requests
+            errcodeLabel:  "_errcode",  // name of response key to indicate API call error
+            idLabel:       "_id",       // name of returned call ID
+            errmsgLabel:   "_errmsg",   // name of returned error message
+            errlocLabel:   "_errloc",   // name of returned error location
+            argsLabel:     "_args",     // name of returned args
+            eLabel:        "_e",        // name of returned exception
         };
 
         this.requestCount = 0;
@@ -226,6 +233,9 @@ export class Gadgetry {
             return this.finalizeResponse(req, res, 500);
         }
 
+        if(res._gadgetryFile)
+            return;
+
         if(content === undefined) {
             return this.finalizeResponse(req, res, 400);
         } else {
@@ -273,7 +283,7 @@ export class Gadgetry {
                 var args     = cmds[i].args === undefined ? { } : cmds[i].args;
                 var id       = cmds[i].id;
                 var cfunc    = this.api[cmd];
-                var cguid    = guid();
+                var cguid    = this.guid();
                 var cmdStart = Date.now();
 
                 if(cfunc) {
@@ -284,22 +294,28 @@ export class Gadgetry {
                         files = [ ];
                     } catch(e) {
                         this.config.logger("api", { errcode: "CMDERROR", errmsg: "Exception thrown by command " + cmd, error: e });
-                        var cres = { _errcode: "SYSERR", _errmsg: "System error.", _errloc: cmd, _args: args, _e: this.config.debug ? e : null };
+                        var cres = { };
+                        cres[this.config.errcodeLabel] = "SYSERR";
+                        cres[this.config.errmsgLabel]  = "System error.";
+                        cres[this.config.errlocLabel]  = cmd;
+                        cres[this.config.argsLabel]    = args;
+                        cres[this.config.eLabel]       = this.config.debug ? e : null;
                     }
 
                     var exectime = Date.now() - cmdStart;
                     if(benchmark && typeof cres == "object")
                         cres._exectime = exectime;
-                    this.config.logger("postCommand", { cmd: cmd, cguid: cguid, exectime: exectime });
+                    if(this.config.logger)
+                        this.config.logger("postCommand", { cmd: cmd, cguid: cguid, exectime: exectime });
 
                     if(id !== undefined)
-                        cres._id = id;
+                        cres[this.config.idLabel] = id;
 
                     if(this.config.intPostCmd)
                         this.config.intPostCmd(req, res, cmd[i], cres);
 
                     result.results.push(cres);
-                    if(cres._errcode) {
+                    if(cres[this.config.errcodeLabel]) {
                         result.failed++;
                         if(!ignoreErrors) {
                             result.aborted = result.cmdcnt - (i + 1);
@@ -310,6 +326,9 @@ export class Gadgetry {
                     }
                     if(this.config.logger)
                         this.config.logger("commandResult", { cguid: cguid, result: cres });
+                    if(res._gadgetryFile) {
+                        return;
+                    }
                 } else {
                     this.config.logger("api", { errcode: "REQERROR", errmsg: "Invalid command " + cmd });
                     return undefined;
@@ -317,8 +336,9 @@ export class Gadgetry {
 
 
             }
-            for(var f of files)
-                try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
+            if(Array.isArray(files))
+                for(var f of files)
+                    try { fs.unlinkSync(f.tmpfile, function() { }); } catch(e) { };
             if(benchmark)
                 result._exectime = Date.now() - cmdStart;
             return result;
@@ -356,10 +376,45 @@ export class Gadgetry {
 
 
     //==========================================================================
+    // Method for API code to use to respond with a stream download
+    //==========================================================================
+
+    async sendStream(req, res, fstream, filename, contentType = false, size = false) {
+        var headers = {
+            "Content-Type": contentType ? contentType : "application/octet-stream",
+            "Content-Disposition": "attachment; filename=" + filename,
+        };
+        if(size)
+            headers["Content-Length"] = size;
+
+        res.writeHead(200, headers);
+        res._gadgetryFile = true;
+        fstream.pipe(res);
+    }
+
+
+    //==========================================================================
+    // Wrapper around this.sendStream that takes a filepath instead of a stream.
+    //==========================================================================
+
+    async sendFile(req, res, filepath, filename, contentType = false) {
+        try {
+            var size = fs.statSync(filepath).size;
+            var fstream = fs.createReadStream(filepath);
+            this.sendStream(req, res, fstream, filename, contentType, size);
+        } catch(e) { console.log(e);
+            this.finalizeResponse(req, res, 404);
+        }
+        return;
+    }
+
+
+    //==========================================================================
     // Sends the response.
     //==========================================================================
 
     finalizeResponse(req, res, status = 400, content = "") { // FN: Gadgetry.finalizeResponse
+        var origin = (req.headers && req.headers.origin) ? req.headers.origin : "none";
 
         if(res.gadgetryStatus !== undefined)
             status = res.gadgetryStatus;
@@ -367,11 +422,19 @@ export class Gadgetry {
             this.config.intPreRes(req, res);
         res.writeHead(status, {
             Connection: "close",
-            "Access-Control-Allow-Origin": (req.headers.origin || "none"),
+            "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Credentials": "true",
             "Content-Type": "application/json"
         }).end(content);
 
+    }
+
+    //==========================================================================
+    // Generates and returns a new GUID.
+    //==========================================================================
+
+    guid() {
+        return guid();
     }
 
     //==========================================================================
