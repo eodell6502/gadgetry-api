@@ -1,8 +1,8 @@
-# gadgetry-api v0.6.0
+# gadgetry-api v1.0.0
 
 ![Gadgetry title](img/gadgetry.jpg)
 
-**NEW in v0.6.0: GET request support**
+**NEW in v1.0.0: File downloads, customizable response labels**
 
 Gadgetry is a minimalist web API framework that follows the Unix philosophy of
 doing one thing and doing it well. Gadgetry ignores all of the non-essential
