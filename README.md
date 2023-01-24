@@ -1,8 +1,6 @@
-# gadgetry-api v1.0.0
+# gadgetry-api v1.0.1
 
 ![Gadgetry title](img/gadgetry.jpg)
-
-**NEW in v1.0.0: File downloads, customizable response labels**
 
 Gadgetry is a minimalist web API framework that follows the Unix philosophy of
 doing one thing and doing it well. Gadgetry ignores all of the non-essential
@@ -109,14 +107,9 @@ Gadgetry, but you could fit them all on an index card.
 * Send individual requests or batch several requests together.
 * Extensive, unopinionated logging that you can plug into your preferred logging mechanism.
 * Interceptor hooks let you execute custom code before and after HTTP requests and responses, as well as individual API functions.
-* Painless handling of file uploads.
+* Painless handling of file uploads and downloads.
 * Optional benchmarking of API function performance.
 * Only a few dependencies: `busboy`, `dyna-guid`, and `tmp`.
-
-As a minimalist framework, there's a lot that Gadgetry doesn't do. Most of this
-is pretty obvious, but the big deal-breaker for many users will be that Gadgetry
-responses are currently limited to pure JSON, so serving files with it is not
-possible at this time.
 
 
 ## Server-Side <a name="serverside"></a>

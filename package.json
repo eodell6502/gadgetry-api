@@ -1,6 +1,6 @@
 {
   "name": "gadgetry-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A minimalist web API framework with an RPC style",
   "main": "gadgetry.js",
   "scripts": {
