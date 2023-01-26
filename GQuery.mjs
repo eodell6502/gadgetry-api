@@ -1,5 +1,5 @@
 
-class GQuery {
+export class GQuery {
 
     //--------------------------------------------------------------------------
 
@@ -117,9 +117,7 @@ class GQuery {
     }
 
 
-
 }
 
 
-
-
+export default GQuery;

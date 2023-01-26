@@ -1,6 +1,8 @@
-# gadgetry-api v1.0.2
+# gadgetry-api v1.0.3
 
 ![Gadgetry title](img/gadgetry.jpg)
+
+**New in v1.0.3: Separate versions of `GQuery` for browser and Node.**
 
 Gadgetry is a minimalist web API framework that follows the Unix philosophy of
 doing one thing and doing it well. Gadgetry ignores all of the non-essential
@@ -245,8 +247,10 @@ executed.
 
 ### Single Requests <a name="singlereqs"></a>
 
-Thanks to the `GQuery` class, using Gadgetry from the client side is even
-easier than working on the server side. The constructor takes two arguments:
+Thanks to the `GQuery` class, using Gadgetry from the client side is even easier
+than working on the server side. You can use either `GQuery.js` for the browser
+or the nearly identical `GQuery.mjs` to run under Node. The constructor takes
+two arguments:
 
 ```javascript
 var gq = new GQuery("https://somedomain.com/api", {
