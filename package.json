@@ -1,8 +1,8 @@
 {
   "name": "gadgetry-api",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A minimalist web API framework with an RPC style",
-  "main": "gadgetry.js",
+  "main": "gadgetry.mjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
