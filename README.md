@@ -1,8 +1,8 @@
-# gadgetry-api v1.0.3
+# gadgetry-api v1.0.4
 
 ![Gadgetry title](img/gadgetry.jpg)
 
-**New in v1.0.3: Separate versions of `GQuery` for browser and Node.**
+**New in v1.0.4: Client now gracefully catches malformed JSON in server response.**
 
 Gadgetry is a minimalist web API framework that follows the Unix philosophy of
 doing one thing and doing it well. Gadgetry ignores all of the non-essential

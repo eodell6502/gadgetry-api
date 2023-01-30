@@ -85,14 +85,21 @@ export class GQuery {
         const requestOptions = { method: "POST", headers: { }, body: data };
         var response = await fetch(this.url, requestOptions);
         var body = await response.text();
-        body = JSON.parse(body);
 
+        try {
+            body = JSON.parse(body);
+        } catch(e) {
+            body = { cmdcnt: null, worked: null, failed: null, aborted: null,
+                exectime: null, results: [ { _errcode: "BADRESPONSE",
+                _errmsg: "API response was not parseable." } ] };
+        }
         this.results  = body.results;
         this.worked   = body.worked;
         this.failed   = body.failed;
         this.aborted  = body.aborted;
         this.cmdcnt   = body.cmdcnt !== undefined   ? body.cmdcnt  : null;
         this.exectime = body.exectime !== undefined ? body.exectime : null;
+
 
         return this.results;
     }
