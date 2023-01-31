@@ -285,16 +285,18 @@ export class Gadgetry {
                 var cfunc    = this.api[cmd];
                 var cguid    = this.guid();
                 var cmdStart = Date.now();
+                var cres     = { };
 
                 if(cfunc) {
                     try {
                         if(this.config.logger)
                             this.config.logger("preCommand", { cguid: cguid, cmd: cmd, args: args});
-                        var cres = await cfunc(args, files, cguid, req, res);
+                        cres = await cfunc(args, files, cguid, req, res);
+                        if(cres === undefined || typeof cres != "object")
+                            cres = { };
                         files = [ ];
                     } catch(e) {
                         this.config.logger("api", { errcode: "CMDERROR", errmsg: "Exception thrown by command " + cmd, error: e });
-                        var cres = { };
                         cres[this.config.errcodeLabel] = "SYSERR";
                         cres[this.config.errmsgLabel]  = "System error.";
                         cres[this.config.errlocLabel]  = cmd;
@@ -315,6 +317,7 @@ export class Gadgetry {
                         this.config.intPostCmd(req, res, cmd[i], cres);
 
                     result.results.push(cres);
+
                     if(cres[this.config.errcodeLabel]) {
                         result.failed++;
                         if(!ignoreErrors) {

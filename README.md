@@ -1,8 +1,8 @@
-# gadgetry-api v1.0.4
+# gadgetry-api v1.0.5
 
 ![Gadgetry title](img/gadgetry.jpg)
 
-**New in v1.0.4: Client now gracefully catches malformed JSON in server response.**
+**New in v1.0.5: Graceful error handling for bad API response.**
 
 Gadgetry is a minimalist web API framework that follows the Unix philosophy of
 doing one thing and doing it well. Gadgetry ignores all of the non-essential
@@ -499,7 +499,7 @@ information about how to use it, see [File Downloads](#filedownloads).
 
 
 
-### GQuery (client side) <a name="queryclass"></a>
+### GQuery (client side) <a name="gqueryclass"></a>
 
 #### `constructor(url, params = { })` <a name="gqueryconstructor"></a>
 
